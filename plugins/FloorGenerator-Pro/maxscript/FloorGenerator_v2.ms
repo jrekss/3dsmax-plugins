@@ -8,12 +8,12 @@
        (or drag-and-drop into viewport).
     2. It registers the "FloorGenerator v2" modifier in the Modifier List with
        the exact 1:1 original multi-rollout UI (collapsible tabs + compact [L]
-       lock buttons), and also opens a docked/floating Rollout Floater.
+       lock buttons).
 ================================================================================
 */
 
 global FGv2_Engine
-global FGv2_Floater
+try (if FGv2_Floater != undefined do (closeRolloutFloater FGv2_Floater; FGv2_Floater = undefined)) catch ()
 
 struct FGv2_Config
 (
@@ -1341,15 +1341,19 @@ struct FGv2_EngineStruct
         (
             local tileL = maxL
             local tileW = if cfg.Width_L then maxL else maxW
-            local insSide = (amax 0.0 cfg.OctagonInsertSize) * sc
+            local minTileDim = amin tileL tileW
             local k45 = 0.70710678
+            -- Clamp Insert Size so the 45-deg chamfer never exceeds 45% of the main tile side (preventing overlap/ugly geometry)
+            local maxChamfer = minTileDim * 0.45
+            local maxAllowedInsDiag = amax 0.0 (maxChamfer - 1.41421356 * gapL + 0.5 * (gapL + gapW))
+            local maxAllowedInsSide = maxAllowedInsDiag / k45
+            local insSide = amax 0.0 (amin ((amax 0.0 cfg.OctagonInsertSize) * sc) maxAllowedInsSide)
             local insHalfDiag = insSide * k45
 
             local stepX = tileL + gapL
             local stepY = tileW + gapW
 
             -- Exact 45-deg chamfer leg on main tile so perpendicular gap to diamond insert equals gapL
-            local maxChamfer = (amin tileL tileW) * 0.48
             local rawChamfer = if insSide > 1e-4 then (insHalfDiag + 1.41421356 * gapL - 0.5 * (gapL + gapW)) else 0.0
             local c = amax 0.0 (amin maxChamfer rawChamfer)
 
@@ -1759,8 +1763,28 @@ plugin simpleMeshMod FloorGenerator_v2
         GroutDepth           type:#worldUnits default:0.5    animatable:true  ui:spnGroutDepth
         GroutMatID           type:#integer    default:3      animatable:false ui:spnGroutMatID
 
-        on Length set val do (if Length_L do Length_R = val)
-        on Width set val do (if Width_L do Width_R = val)
+        on Length set val do
+        (
+            if Length_L do Length_R = val
+            if FloorPattern == 7 do
+            (
+                local minDim = if Width_L then val else (amin val Width)
+                local maxIns = amax 0.0 ((minDim * 0.45 - 1.41421356 * GroutLength + 0.5 * (GroutLength + GroutWidth)) * 1.41421356)
+                if OctagonInsertSize > maxIns do OctagonInsertSize = maxIns
+                this.refreshAllRollouts()
+            )
+        )
+        on Width set val do
+        (
+            if Width_L do Width_R = val
+            if FloorPattern == 7 and (not Width_L) do
+            (
+                local minDim = amin Length val
+                local maxIns = amax 0.0 ((minDim * 0.45 - 1.41421356 * GroutLength + 0.5 * (GroutLength + GroutWidth)) * 1.41421356)
+                if OctagonInsertSize > maxIns do OctagonInsertSize = maxIns
+                this.refreshAllRollouts()
+            )
+        )
         on GroutLength set val do (if Grout_L do GroutWidth = val)
         on MinRowOffset set val do (if RowOffset_L do MaxRowOffset = val)
         on Bevel set val do (if BevelL do Outline = val)
@@ -1853,10 +1877,24 @@ plugin simpleMeshMod FloorGenerator_v2
     (
         if this.rolFG_Pattern != undefined and this.rolFG_Pattern.open do
         (
+            local hasSubParam = (FloorPattern == 2 or FloorPattern == 3 or FloorPattern == 4 or FloorPattern == 7)
             this.rolFG_Pattern.spnParallels.visible    = (FloorPattern == 2)
             this.rolFG_Pattern.spnChevronAngle.visible = (FloorPattern == 3)
             this.rolFG_Pattern.spnSubBoards.visible    = (FloorPattern == 4)
             this.rolFG_Pattern.spnInsertSize.visible   = (FloorPattern == 7)
+
+            if FloorPattern == 7 do
+            (
+                local minDim = if Width_L then Length else (amin Length Width)
+                local maxIns = amax 0.0 ((minDim * 0.45 - 1.41421356 * GroutLength + 0.5 * (GroutLength + GroutWidth)) * 1.41421356)
+                this.rolFG_Pattern.spnInsertSize.range = [0.0, amax 0.1 maxIns, amin OctagonInsertSize maxIns]
+                if OctagonInsertSize > maxIns do OctagonInsertSize = maxIns
+            )
+
+            -- Dynamically resize Floor Pattern rollout so there is no empty space when no sub-parameter is shown
+            local targetH = if hasSubParam then 46 else 26
+            if this.rolFG_Pattern.height != targetH do
+                this.rolFG_Pattern.height = targetH
         )
         if this.rolFG_BoardSize != undefined and this.rolFG_BoardSize.open do
         (
@@ -2204,522 +2242,4 @@ plugin simpleMeshMod FloorGenerator_v2
     )
 )
 
-
--- =============================================================================
--- PART B: Standalone Rollout Floater ("FloorGenerator v2")
---         Uses the exact same 1:1 Collapsible Rollout Tabs & [L] Lock Buttons!
--- =============================================================================
-try (if FGv2_Floater != undefined do closeRolloutFloater FGv2_Floater) catch ()
-
-(
-    local uiCfg = FGv2_Config()
-    local lastGeneratedNode = undefined
-    local lockHighlightCol = color 105 162 225
-
-    local rolFloat_Actions
-    local rolFloat_Pattern
-    local rolFloat_BoardSize
-    local rolFloat_Variation
-    local rolFloat_General
-    local rolFloat_UV
-    local rolFloat_Warnings
-    local rolFloat_Update
-    local rolFloat_Presets
-    local rolFloat_Credits
-
-    fn refreshFloaterUI =
-    (
-        local p = uiCfg.FloorPattern
-        local isStd = (p == 1)
-        local isOct = (p == 7)
-        local hasWidth = (p == 1 or p == 2 or p == 3 or (isOct and not uiCfg.Width_L))
-
-        if rolFloat_Pattern != undefined and rolFloat_Pattern.open do
-        (
-            rolFloat_Pattern.ddPattern.selection = p
-            rolFloat_Pattern.spnParallels.value = uiCfg.HerringboneParallels
-            rolFloat_Pattern.spnChevronAngle.value = uiCfg.ChevronAngle
-            rolFloat_Pattern.spnSubBoards.value = uiCfg.BasketWeaveSubBoards
-            rolFloat_Pattern.spnInsertSize.value = uiCfg.OctagonInsertSize
-
-            rolFloat_Pattern.spnParallels.visible    = (p == 2)
-            rolFloat_Pattern.spnChevronAngle.visible = (p == 3)
-            rolFloat_Pattern.spnSubBoards.visible    = (p == 4)
-            rolFloat_Pattern.spnInsertSize.visible   = (p == 7)
-        )
-
-        if rolFloat_BoardSize != undefined and rolFloat_BoardSize.open do
-        (
-            rolFloat_BoardSize.spnLength.value  = uiCfg.Length
-            rolFloat_BoardSize.spnLengthR.value = uiCfg.Length_R
-            rolFloat_BoardSize.btnLockLength.state = uiCfg.Length_L
-            rolFloat_BoardSize.spnLengthS.value = uiCfg.Length_S
-
-            rolFloat_BoardSize.spnWidth.value   = uiCfg.Width
-            rolFloat_BoardSize.spnWidthR.value  = uiCfg.Width_R
-            rolFloat_BoardSize.btnLockWidth.state = uiCfg.Width_L
-            rolFloat_BoardSize.spnWidthS.value  = uiCfg.Width_S
-
-            rolFloat_BoardSize.spnGroutL.value  = uiCfg.GroutLength
-            rolFloat_BoardSize.spnGroutW.value  = uiCfg.GroutWidth
-            rolFloat_BoardSize.btnLockGrout.state = uiCfg.Grout_L
-
-            rolFloat_BoardSize.spnMinRowOff.value = uiCfg.MinRowOffset
-            rolFloat_BoardSize.spnMaxRowOff.value = uiCfg.MaxRowOffset
-            rolFloat_BoardSize.btnLockRowOff.state = uiCfg.RowOffset_L
-
-            rolFloat_BoardSize.chkDoExtrude.checked = uiCfg.DoExtrude
-            rolFloat_BoardSize.spnExtrude.value = uiCfg.Extrude
-            rolFloat_BoardSize.chkDoBevel.checked = uiCfg.DoBevel
-            rolFloat_BoardSize.spnBevel.value   = uiCfg.Bevel
-            rolFloat_BoardSize.btnLockOutline.state = uiCfg.BevelL
-            rolFloat_BoardSize.spnOutline.value = uiCfg.Outline
-            rolFloat_BoardSize.chkDoGrout.checked   = uiCfg.DoGrout
-            rolFloat_BoardSize.spnGroutDepth.value  = uiCfg.GroutDepth
-            rolFloat_BoardSize.spnGroutMatID.value  = uiCfg.GroutMatID
-
-            rolFloat_BoardSize.spnLengthR.enabled = isStd and (not uiCfg.Length_L)
-            rolFloat_BoardSize.spnLengthS.enabled = isStd and (not uiCfg.Length_L)
-            rolFloat_BoardSize.btnLockLength.enabled = isStd
-
-            rolFloat_BoardSize.spnWidth.enabled   = hasWidth
-            rolFloat_BoardSize.spnWidthR.enabled  = isStd and (not uiCfg.Width_L)
-            rolFloat_BoardSize.spnWidthS.enabled  = isStd and (not uiCfg.Width_L)
-            rolFloat_BoardSize.btnLockWidth.enabled = (isStd or isOct)
-
-            rolFloat_BoardSize.spnGroutW.enabled  = (p == 1 or p == 3 or isOct) and (not uiCfg.Grout_L)
-            rolFloat_BoardSize.btnLockGrout.enabled = (p == 1 or p == 3 or isOct)
-
-            rolFloat_BoardSize.spnMinRowOff.enabled = isStd
-            rolFloat_BoardSize.spnMaxRowOff.enabled = isStd and (not uiCfg.RowOffset_L)
-            rolFloat_BoardSize.btnLockRowOff.enabled = isStd
-
-            rolFloat_BoardSize.spnExtrude.enabled = uiCfg.DoExtrude
-            rolFloat_BoardSize.spnBevel.enabled   = uiCfg.DoBevel
-            rolFloat_BoardSize.spnOutline.enabled = uiCfg.DoBevel and (not uiCfg.BevelL)
-            rolFloat_BoardSize.btnLockOutline.enabled = uiCfg.DoBevel
-            rolFloat_BoardSize.spnGroutDepth.enabled  = uiCfg.DoGrout
-            rolFloat_BoardSize.spnGroutMatID.enabled  = uiCfg.DoGrout
-        )
-
-        if rolFloat_Variation != undefined and rolFloat_Variation.open do
-        (
-            rolFloat_Variation.spnMaxRot.value = uiCfg.MaxRotation
-            rolFloat_Variation.spnMinRot.value = uiCfg.Rotation_R
-            rolFloat_Variation.spnRotS.value   = uiCfg.RotationSpread
-
-            rolFloat_Variation.spnOffX.value   = uiCfg.Offset_X
-            rolFloat_Variation.spnOffXR.value  = uiCfg.Offset_X_R
-            rolFloat_Variation.spnOffXS.value  = uiCfg.Offset_X_S
-            rolFloat_Variation.btnLockOffset.state = uiCfg.Offset_L
-
-            rolFloat_Variation.spnOffY.value   = uiCfg.Offset_Y
-            rolFloat_Variation.spnOffYR.value  = uiCfg.Offset_Y_R
-            rolFloat_Variation.spnOffYS.value  = uiCfg.Offset_Y_S
-
-            rolFloat_Variation.spnTilt.value   = uiCfg.Tilt
-            rolFloat_Variation.spnTiltR.value  = uiCfg.Tilt_R
-            rolFloat_Variation.spnTiltS.value  = uiCfg.Tilt_S
-            rolFloat_Variation.spnOverlap.value = uiCfg.MaxOverlap
-
-            rolFloat_Variation.spnOffY.enabled  = not uiCfg.Offset_L
-            rolFloat_Variation.spnOffYR.enabled = not uiCfg.Offset_L
-            rolFloat_Variation.spnOffYS.enabled = not uiCfg.Offset_L
-        )
-
-        if rolFloat_General != undefined and rolFloat_General.open do
-        (
-            rolFloat_General.spnScale.value     = uiCfg.Scale
-            rolFloat_General.spnDirection.value = uiCfg.Direction
-            rolFloat_General.spnSeed.value      = uiCfg.Seed
-            rolFloat_General.spnObjOffX.value   = uiCfg.ObjOffsetX
-            rolFloat_General.spnObjOffY.value   = uiCfg.ObjOffsetY
-            rolFloat_General.chkDoWeld.checked  = uiCfg.DoWeld
-            rolFloat_General.spnWeld.value      = uiCfg.Weld
-            rolFloat_General.spnWeld.enabled    = uiCfg.DoWeld
-        )
-
-        if rolFloat_UV != undefined and rolFloat_UV.open do
-        (
-            rolFloat_UV.spnUVChan.value      = uiCfg.UVChannel
-            rolFloat_UV.chkFlipU.checked     = uiCfg.FlipU
-            rolFloat_UV.chkFlipV.checked     = uiCfg.FlipV
-            rolFloat_UV.chkRandOffU.checked  = uiCfg.RandomOffsetU
-            rolFloat_UV.chkRandOffV.checked  = uiCfg.RandomOffsetV
-        )
-
-        if rolFloat_Warnings != undefined and rolFloat_Warnings.open do
-        (
-            rolFloat_Warnings.spnWarnMax.value = uiCfg.WarnMaxBoard
-        )
-
-        if rolFloat_Update != undefined and rolFloat_Update.open do
-        (
-            rolFloat_Update.rbUpdate.state = if uiCfg.LiveUpdate then 1 else 2
-            rolFloat_Update.btnManualUpdate.enabled = not uiCfg.LiveUpdate
-        )
-    )
-
-    -- Sync changes live to active FloorGenerator_v2 modifier on selected object (if present)
-    fn pushFloaterToActiveModifier forceNow:false =
-    (
-        if selection.count == 1 do
-        (
-            local obj = selection[1]
-            for m in obj.modifiers where classOf m == FloorGenerator_v2 do
-            (
-                if uiCfg.LiveUpdate or forceNow do
-                (
-                    m.LiveUpdate = uiCfg.LiveUpdate
-                    m.applyConfig uiCfg
-                    if forceNow do m.Seed = m.Seed
-                )
-            )
-        )
-    )
-
-    -- 0. Quick Actions Rollout (Floater header)
-    rollout rolFloat_Actions "Quick Actions" width:162
-    (
-        button btnApplyMod     "Apply Modifier to Selected" width:150 height:20 align:#center offset:[0, -2] toolTip:"Add 'FloorGenerator v2' modifier to selected flat object(s)"
-        button btnGenerateMesh "Create / Update Mesh"       width:150 height:20 align:#center offset:[0, -3] toolTip:"Build standalone Editable_mesh floor from selected object"
-        button btnCreateDemo   "Demo Floor (3000 x 3000)"   width:150 height:20 align:#center offset:[0, -3] toolTip:"Create a 3000x3000 Plane with FloorGenerator v2 modifier"
-
-        on btnApplyMod pressed do
-        (
-            if selection.count == 0 then
-                messageBox "Please select a flat object (Plane, Spline, or Mesh) first, or click 'Demo Floor'." title:"FloorGenerator v2"
-            else
-            (
-                undo "Apply FloorGenerator v2" on
-                (
-                    for obj in selection where superClassOf obj == GeometryClass or superClassOf obj == shape do
-                    (
-                        local fgMod = FloorGenerator_v2()
-                        fgMod.applyConfig uiCfg
-                        addModifier obj fgMod
-                    )
-                    max modify mode
-                )
-                redrawViews()
-            )
-        )
-
-        on btnGenerateMesh pressed do
-        (
-            if selection.count == 0 then
-                messageBox "Please select a flat object (Plane, Spline, or Mesh) first!" title:"FloorGenerator v2"
-            else
-            (
-                local srcNode = selection[1]
-                local srcTM   = srcNode.transform
-                local invSrcTM = inverse srcTM
-                local baseMesh = snapshotAsMesh srcNode
-                if baseMesh == undefined or baseMesh.numFaces == 0 then
-                    messageBox "Selected object cannot be converted to a valid surface mesh." title:"FloorGenerator v2"
-                else
-                (
-                    -- Convert world-space snapshot back to source node local space so pivot matches source object
-                    for v = 1 to baseMesh.numVerts do
-                        setVert baseMesh v ((getVert baseMesh v) * invSrcTM)
-                    update baseMesh
-
-                    undo "Generate FloorGenerator v2 Mesh" on
-                    (
-                        if (FGv2_Engine.buildFloorOnTriMesh baseMesh uiCfg allowDialogs:true) do
-                        (
-                            if isValidNode lastGeneratedNode and lastGeneratedNode != srcNode then
-                            (
-                                lastGeneratedNode.mesh = baseMesh
-                                lastGeneratedNode.transform = srcTM
-                                select lastGeneratedNode
-                            )
-                            else
-                            (
-                                local newFloor = Editable_mesh name:(uniquename "FloorGenerator_v2_")
-                                newFloor.mesh = baseMesh
-                                newFloor.transform = srcTM
-                                newFloor.wirecolor = color 180 140 95
-                                lastGeneratedNode = newFloor
-                                select newFloor
-                            )
-                        )
-                        delete baseMesh
-                    )
-                    redrawViews()
-                )
-            )
-        )
-
-        on btnCreateDemo pressed do
-        (
-            undo "Create Demo FloorGenerator v2" on
-            (
-                local p = Plane length:3000.0 width:3000.0 lengthsegs:1 widthsegs:1 name:(uniquename "FloorBase_")
-                p.wirecolor = color 180 140 95
-                select p
-                local fgMod = FloorGenerator_v2()
-                fgMod.applyConfig uiCfg
-                addModifier p fgMod
-                max modify mode
-            )
-            redrawViews()
-        )
-    )
-
-    -- 1. Floor Pattern Rollout
-    rollout rolFloat_Pattern "Floor Pattern" width:162
-    (
-        label lblPat "Floor Pattern" align:#left offset:[-5, 1] across:2
-        dropdownList ddPattern "" items:#("Standard", "Herringbone", "Chevron", "Basket Weave", "Hexagon", "Triangle", "Octagon") selection:1 width:82 align:#right offset:[6, -2]
-        spinner spnParallels "Parallel Boards " range:[1,100,1] type:#integer fieldwidth:56 align:#right offset:[-12, -2] visible:false
-        spinner spnChevronAngle "Angle " range:[1.0,85.0,45.0] type:#float scale:0.5 fieldwidth:56 align:#right offset:[-12, -21] visible:false
-        spinner spnSubBoards "Sub Boards " range:[1,100,3] type:#integer fieldwidth:56 align:#right offset:[-12, -21] visible:false
-        spinner spnInsertSize "Insert Size " range:[0.0,1e6,200.0] type:#worldUnits fieldwidth:56 align:#right offset:[-12, -21] visible:false
-
-        on rolFloat_Pattern open do refreshFloaterUI()
-        on ddPattern selected idx do (uiCfg.FloorPattern = idx; refreshFloaterUI(); pushFloaterToActiveModifier())
-        on spnParallels changed val do (uiCfg.HerringboneParallels = val; pushFloaterToActiveModifier())
-        on spnChevronAngle changed val do (uiCfg.ChevronAngle = val; pushFloaterToActiveModifier())
-        on spnSubBoards changed val do (uiCfg.BasketWeaveSubBoards = val; pushFloaterToActiveModifier())
-        on spnInsertSize changed val do (uiCfg.OctagonInsertSize = val; pushFloaterToActiveModifier())
-    )
-
-    -- 2. Board Size Rollout
-    rollout rolFloat_BoardSize "Board Size" width:162
-    (
-        spinner spnLength  "Max Length " range:[0.1,1e6,1000.0] type:#worldUnits fieldwidth:56 align:#right offset:[-12, -2]
-        spinner spnLengthR "Min Length " range:[0.1,1e6,1000.0] type:#worldUnits fieldwidth:56 align:#right offset:[-12, -4]
-        checkbutton btnLockLength "L" width:13 height:16 align:#right offset:[4, -29] checked:true highlightColor:lockHighlightCol toolTip:"Lock Min/Max Length"
-        spinner spnLengthS "Spread "     range:[0.0,1.0,0.5]    type:#float scale:0.01 fieldwidth:56 align:#right offset:[-12, 5]
-
-        spinner spnWidth   "Max Width "  range:[0.1,1e6,70.0]   type:#worldUnits fieldwidth:56 align:#right offset:[-12, 3]
-        spinner spnWidthR  "Min Width "  range:[0.1,1e6,70.0]   type:#worldUnits fieldwidth:56 align:#right offset:[-12, -4]
-        checkbutton btnLockWidth "L" width:13 height:16 align:#right offset:[4, -29] checked:true highlightColor:lockHighlightCol toolTip:"Lock Min/Max Width"
-        spinner spnWidthS  "Spread "     range:[0.0,1.0,0.5]    type:#float scale:0.01 fieldwidth:56 align:#right offset:[-12, 5]
-
-        spinner spnGroutL  "Grout Len "  range:[0.0,1e5,0.2]    type:#worldUnits scale:0.05 fieldwidth:56 align:#right offset:[-12, 3]
-        spinner spnGroutW  "Grout Wid "  range:[0.0,1e5,0.2]    type:#worldUnits scale:0.05 fieldwidth:56 align:#right offset:[-12, -4]
-        checkbutton btnLockGrout "L" width:13 height:16 align:#right offset:[4, -29] checked:true highlightColor:lockHighlightCol toolTip:"Lock Grout Length/Width"
-
-        spinner spnMinRowOff "Min Offset % " range:[0.0,100.0,20.0] type:#float fieldwidth:56 align:#right offset:[-12, 12]
-        spinner spnMaxRowOff "Max Offset % " range:[0.0,100.0,20.0] type:#float fieldwidth:56 align:#right offset:[-12, -4]
-        checkbutton btnLockRowOff "L" width:13 height:16 align:#right offset:[4, -29] checked:true highlightColor:lockHighlightCol toolTip:"Lock Min/Max Row Offset %"
-
-        checkbox chkDoExtrude "Extrude" align:#left offset:[-5, 12] checked:true
-        spinner spnExtrude "H " range:[0.0,1e5,1.0] type:#worldUnits scale:0.1 fieldwidth:56 align:#right offset:[-12, -20]
-
-        checkbox chkDoBevel "Bevel" align:#left offset:[-5, -4] checked:true
-        spinner spnBevel "H " range:[0.0,1e5,0.5] type:#worldUnits scale:0.05 fieldwidth:56 align:#right offset:[-12, -20]
-
-        spinner spnOutline "Outline " range:[0.0,1e5,0.5] type:#worldUnits scale:0.05 fieldwidth:56 align:#right offset:[-12, -4]
-        checkbutton btnLockOutline "L" width:13 height:16 align:#right offset:[4, -29] checked:true highlightColor:lockHighlightCol toolTip:"Lock Bevel Height / Outline"
-
-        checkbox chkDoGrout "Grout" align:#left offset:[-5, 6] checked:false toolTip:"Generate ultra-lightweight 3D Grout base mesh under gaps"
-        spinner spnGroutDepth "Depth " range:[0.0,1e5,0.5] type:#worldUnits scale:0.05 fieldwidth:56 align:#right offset:[-12, -20]
-        spinner spnGroutMatID "Grout ID " range:[1,65535,3] type:#integer fieldwidth:56 align:#right offset:[-12, -4]
-        label lblPadBS "" height:1 align:#left offset:[0, 2]
-
-        on rolFloat_BoardSize open do refreshFloaterUI()
-
-        on spnLength changed val do (uiCfg.Length = val; if uiCfg.Length_L do (uiCfg.Length_R = val; spnLengthR.value = val); pushFloaterToActiveModifier())
-        on spnLengthR changed val do (uiCfg.Length_R = val; pushFloaterToActiveModifier())
-        on btnLockLength changed state do (uiCfg.Length_L = state; if state do uiCfg.Length_R = uiCfg.Length; refreshFloaterUI(); pushFloaterToActiveModifier())
-        on spnLengthS changed val do (uiCfg.Length_S = val; pushFloaterToActiveModifier())
-
-        on spnWidth changed val do (uiCfg.Width = val; if uiCfg.Width_L do (uiCfg.Width_R = val; spnWidthR.value = val); pushFloaterToActiveModifier())
-        on spnWidthR changed val do (uiCfg.Width_R = val; pushFloaterToActiveModifier())
-        on btnLockWidth changed state do (uiCfg.Width_L = state; if state do uiCfg.Width_R = uiCfg.Width; refreshFloaterUI(); pushFloaterToActiveModifier())
-        on spnWidthS changed val do (uiCfg.Width_S = val; pushFloaterToActiveModifier())
-
-        on spnGroutL changed val do (uiCfg.GroutLength = val; if uiCfg.Grout_L do (uiCfg.GroutWidth = val; spnGroutW.value = val); pushFloaterToActiveModifier())
-        on spnGroutW changed val do (uiCfg.GroutWidth = val; pushFloaterToActiveModifier())
-        on btnLockGrout changed state do (uiCfg.Grout_L = state; if state do uiCfg.GroutWidth = uiCfg.GroutLength; refreshFloaterUI(); pushFloaterToActiveModifier())
-
-        on spnMinRowOff changed val do (uiCfg.MinRowOffset = val; if uiCfg.RowOffset_L do (uiCfg.MaxRowOffset = val; spnMaxRowOff.value = val); pushFloaterToActiveModifier())
-        on spnMaxRowOff changed val do (uiCfg.MaxRowOffset = val; pushFloaterToActiveModifier())
-        on btnLockRowOff changed state do (uiCfg.RowOffset_L = state; if state do uiCfg.MaxRowOffset = uiCfg.MinRowOffset; refreshFloaterUI(); pushFloaterToActiveModifier())
-
-        on chkDoExtrude changed state do (uiCfg.DoExtrude = state; refreshFloaterUI(); pushFloaterToActiveModifier())
-        on spnExtrude changed val do (uiCfg.Extrude = val; pushFloaterToActiveModifier())
-        on chkDoBevel changed state do (uiCfg.DoBevel = state; refreshFloaterUI(); pushFloaterToActiveModifier())
-        on spnBevel changed val do (uiCfg.Bevel = val; if uiCfg.BevelL do (uiCfg.Outline = val; spnOutline.value = val); pushFloaterToActiveModifier())
-        on spnOutline changed val do (uiCfg.Outline = val; pushFloaterToActiveModifier())
-        on btnLockOutline changed state do (uiCfg.BevelL = state; if state do uiCfg.Outline = uiCfg.Bevel; refreshFloaterUI(); pushFloaterToActiveModifier())
-        on chkDoGrout changed state do (uiCfg.DoGrout = state; refreshFloaterUI(); pushFloaterToActiveModifier())
-        on spnGroutDepth changed val do (uiCfg.GroutDepth = val; pushFloaterToActiveModifier())
-        on spnGroutMatID changed val do (uiCfg.GroutMatID = val; pushFloaterToActiveModifier())
-    )
-
-    -- 3. Variation Per Board Rollout
-    rollout rolFloat_Variation "Variation Per Board" width:162
-    (
-        spinner spnMaxRot "Max Rotation " range:[0.0,100.0,0.0] type:#float fieldwidth:56 align:#right offset:[-12, -2]
-        spinner spnMinRot "Min Rotation " range:[0.0,100.0,0.0] type:#float fieldwidth:56 align:#right offset:[-12, -4]
-        spinner spnRotS   "Spread "       range:[0.0,1.0,0.5]   type:#float scale:0.01 fieldwidth:56 align:#right offset:[-12, -4]
-
-        spinner spnOffX   "Max Offset X " range:[0.0,1e5,0.0]   type:#worldUnits scale:0.05 fieldwidth:56 align:#right offset:[-12, 3]
-        spinner spnOffXR  "Min Offset X " range:[0.0,1e5,0.0]   type:#worldUnits scale:0.05 fieldwidth:56 align:#right offset:[-12, -4]
-        spinner spnOffXS  "Spread "       range:[0.0,1.0,0.5]   type:#float scale:0.01 fieldwidth:56 align:#right offset:[-12, -4]
-
-        checkbutton btnLockOffset "L" width:13 height:16 align:#right offset:[4, -5] checked:true highlightColor:lockHighlightCol toolTip:"Lock Offset X / Offset Y"
-
-        spinner spnOffY   "Max Offset Y " range:[0.0,1e5,0.0]   type:#worldUnits scale:0.05 fieldwidth:56 align:#right offset:[-12, -5]
-        spinner spnOffYR  "Min Offset Y " range:[0.0,1e5,0.0]   type:#worldUnits scale:0.05 fieldwidth:56 align:#right offset:[-12, -4]
-        spinner spnOffYS  "Spread "       range:[0.0,1.0,0.5]   type:#float scale:0.01 fieldwidth:56 align:#right offset:[-12, -4]
-
-        spinner spnTilt   "Max Tilt "     range:[0.0,1e5,0.0]   type:#worldUnits scale:0.05 fieldwidth:56 align:#right offset:[-12, 3]
-        spinner spnTiltR  "Min Tilt "     range:[0.0,1e5,0.0]   type:#worldUnits scale:0.05 fieldwidth:56 align:#right offset:[-12, -4]
-        spinner spnTiltS  "Spread "       range:[0.0,1.0,0.5]   type:#float scale:0.01 fieldwidth:56 align:#right offset:[-12, -4]
-
-        spinner spnOverlap "Max Overlap " range:[0.0,1e5,0.0]   type:#worldUnits scale:0.05 fieldwidth:56 align:#right offset:[-12, 3]
-
-        on rolFloat_Variation open do refreshFloaterUI()
-
-        on spnMaxRot changed val do (uiCfg.MaxRotation = val; pushFloaterToActiveModifier())
-        on spnMinRot changed val do (uiCfg.Rotation_R = val; pushFloaterToActiveModifier())
-        on spnRotS changed val do (uiCfg.RotationSpread = val; pushFloaterToActiveModifier())
-
-        on spnOffX changed val do (uiCfg.Offset_X = val; if uiCfg.Offset_L do (uiCfg.Offset_Y = val; spnOffY.value = val); pushFloaterToActiveModifier())
-        on spnOffXR changed val do (uiCfg.Offset_X_R = val; if uiCfg.Offset_L do (uiCfg.Offset_Y_R = val; spnOffYR.value = val); pushFloaterToActiveModifier())
-        on spnOffXS changed val do (uiCfg.Offset_X_S = val; if uiCfg.Offset_L do (uiCfg.Offset_Y_S = val; spnOffYS.value = val); pushFloaterToActiveModifier())
-
-        on btnLockOffset changed state do
-        (
-            uiCfg.Offset_L = state
-            if state do
-            (
-                uiCfg.Offset_Y   = uiCfg.Offset_X
-                uiCfg.Offset_Y_R = uiCfg.Offset_X_R
-                uiCfg.Offset_Y_S = uiCfg.Offset_X_S
-            )
-            refreshFloaterUI()
-            pushFloaterToActiveModifier()
-        )
-
-        on spnOffY changed val do (uiCfg.Offset_Y = val; pushFloaterToActiveModifier())
-        on spnOffYR changed val do (uiCfg.Offset_Y_R = val; pushFloaterToActiveModifier())
-        on spnOffYS changed val do (uiCfg.Offset_Y_S = val; pushFloaterToActiveModifier())
-
-        on spnTilt changed val do (uiCfg.Tilt = val; pushFloaterToActiveModifier())
-        on spnTiltR changed val do (uiCfg.Tilt_R = val; pushFloaterToActiveModifier())
-        on spnTiltS changed val do (uiCfg.Tilt_S = val; pushFloaterToActiveModifier())
-        on spnOverlap changed val do (uiCfg.MaxOverlap = val; pushFloaterToActiveModifier())
-    )
-
-    -- 4. General Rollout
-    rollout rolFloat_General "General" width:162
-    (
-        spinner spnScale     "Scale % "   range:[0.1,100000.0,100.0] type:#float fieldwidth:56 align:#right offset:[-12, -2]
-        spinner spnDirection "Direction " range:[-360.0,360.0,0.0]   type:#float fieldwidth:56 align:#right offset:[-12, -4]
-        spinner spnSeed      "Seed "      range:[0,2000000000,12345] type:#integer fieldwidth:56 align:#right offset:[-12, -4]
-        spinner spnObjOffX   "Offset X "  range:[-1e6,1e6,0.0]       type:#worldUnits fieldwidth:56 align:#right offset:[-12, -2]
-        spinner spnObjOffY   "Offset Y "  range:[-1e6,1e6,0.0]       type:#worldUnits fieldwidth:56 align:#right offset:[-12, -4]
-        checkbox chkDoWeld   "Weld"       align:#left offset:[-2, -2] checked:false
-        spinner spnWeld      "Thr. "      range:[0.0,100.0,0.05]     type:#worldUnits scale:0.01 fieldwidth:56 align:#right offset:[-12, -20]
-
-        on rolFloat_General open do refreshFloaterUI()
-        on spnScale changed val do (uiCfg.Scale = val; pushFloaterToActiveModifier())
-        on spnDirection changed val do (uiCfg.Direction = val; pushFloaterToActiveModifier())
-        on spnSeed changed val do (uiCfg.Seed = val; pushFloaterToActiveModifier())
-        on spnObjOffX changed val do (uiCfg.ObjOffsetX = val; pushFloaterToActiveModifier())
-        on spnObjOffY changed val do (uiCfg.ObjOffsetY = val; pushFloaterToActiveModifier())
-        on chkDoWeld changed state do (uiCfg.DoWeld = state; refreshFloaterUI(); pushFloaterToActiveModifier())
-        on spnWeld changed val do (uiCfg.Weld = val; pushFloaterToActiveModifier())
-    )
-
-    -- 5. UV Settings Rollout
-    rollout rolFloat_UV "UV Settings" width:162
-    (
-        spinner spnUVChan "UV Channel " range:[1,99,1] type:#integer fieldwidth:56 align:#right offset:[-12, -2]
-        checkbox chkFlipU    "Random Flip Mapping U" align:#left offset:[2, 1]  checked:true
-        checkbox chkFlipV    "Random Flip Mapping V" align:#left offset:[2, -3] checked:true
-        checkbox chkRandOffU "Random Offset U"       align:#left offset:[2, -3] checked:true
-        checkbox chkRandOffV "Random Offset V"       align:#left offset:[2, -3] checked:true
-
-        on rolFloat_UV open do refreshFloaterUI()
-        on spnUVChan changed val do (uiCfg.UVChannel = val; pushFloaterToActiveModifier())
-        on chkFlipU changed state do (uiCfg.FlipU = state; pushFloaterToActiveModifier())
-        on chkFlipV changed state do (uiCfg.FlipV = state; pushFloaterToActiveModifier())
-        on chkRandOffU changed state do (uiCfg.RandomOffsetU = state; pushFloaterToActiveModifier())
-        on chkRandOffV changed state do (uiCfg.RandomOffsetV = state; pushFloaterToActiveModifier())
-    )
-
-    -- 6. Warnings Rollout
-    rollout rolFloat_Warnings "Warnings" width:162
-    (
-        spinner spnWarnMax "Max Boards " range:[100,1000000,10000] type:#integer fieldwidth:56 align:#right offset:[-12, -2]
-
-        on rolFloat_Warnings open do refreshFloaterUI()
-        on spnWarnMax changed val do (uiCfg.WarnMaxBoard = val; pushFloaterToActiveModifier())
-    )
-
-    -- 7. Update Rollout
-    rollout rolFloat_Update "Update" width:162
-    (
-        radiobuttons rbUpdate "" labels:#("Always", "Manually") columns:1 default:1 align:#center offset:[-6, -2]
-        button btnManualUpdate "Update" width:116 height:18 align:#center offset:[0, -1]
-
-        on rolFloat_Update open do refreshFloaterUI()
-        on rbUpdate changed state do
-        (
-            uiCfg.LiveUpdate = (state == 1)
-            refreshFloaterUI()
-            if uiCfg.LiveUpdate do pushFloaterToActiveModifier forceNow:true
-        )
-        on btnManualUpdate pressed do
-        (
-            pushFloaterToActiveModifier forceNow:true
-        )
-    )
-
-    -- 8. Save/Load Presets Rollout
-    rollout rolFloat_Presets "Save/Load Presets" width:162
-    (
-        button btnSaveIni "Save" width:64 height:18 across:2 align:#left offset:[-2, -2]
-        button btnLoadIni "Load" width:64 height:18 align:#right offset:[2, -2]
-
-        on btnSaveIni pressed do
-        (
-            local f = getSaveFileName caption:"Save FloorGenerator Preset" types:"Ini(*.ini)|*.ini|All(*.*)|*.*|"
-            if f != undefined do FGv2_Engine.savePresetIni uiCfg f
-        )
-
-        on btnLoadIni pressed do
-        (
-            local f = getOpenFileName caption:"Load FloorGenerator Preset" types:"Ini(*.ini)|*.ini|All(*.*)|*.*|"
-            if f != undefined do
-            (
-                if (FGv2_Engine.loadPresetIni uiCfg f) do
-                (
-                    refreshFloaterUI()
-                    pushFloaterToActiveModifier forceNow:true
-                )
-            )
-        )
-    )
-
-    -- 9. Credits Rollout
-    rollout rolFloat_Credits "Credits" width:162
-    (
-        label lblCredits1 "FloorGenerator V2.10" align:#center offset:[0, -2]
-        label lblCredits2 "Created by" align:#center offset:[0, -4]
-        hyperLink hlCredits "CG-Source.com" address:"https://www.cg-source.com" color:(color 45 95 225) hoverColor:(color 90 145 255) visitedColor:(color 45 95 225) align:#center offset:[0, -4]
-        label lblCredits3 "The source for" align:#center offset:[0, -4]
-        label lblCredits4 "HighQuality texures" align:#center offset:[0, -4]
-    )
-
-    FGv2_Floater = newRolloutFloater "FloorGenerator" 200 780
-    addRollout rolFloat_Actions   FGv2_Floater rolledUp:false
-    addRollout rolFloat_Pattern   FGv2_Floater rolledUp:false
-    addRollout rolFloat_BoardSize FGv2_Floater rolledUp:false
-    addRollout rolFloat_Variation FGv2_Floater rolledUp:false
-    addRollout rolFloat_General   FGv2_Floater rolledUp:false
-    addRollout rolFloat_UV        FGv2_Floater rolledUp:false
-    addRollout rolFloat_Warnings  FGv2_Floater rolledUp:false
-    addRollout rolFloat_Update    FGv2_Floater rolledUp:false
-    addRollout rolFloat_Presets   FGv2_Floater rolledUp:false
-    addRollout rolFloat_Credits   FGv2_Floater rolledUp:false
-)
-
-format "[FloorGenerator v2.10] Loaded! Original multi-rollout UI registered in Modifier List and Rollout Floater opened.\n"
+format "[FloorGenerator v2.10] Loaded! Modifier 'FloorGenerator v2' registered in Modifier List.\n"

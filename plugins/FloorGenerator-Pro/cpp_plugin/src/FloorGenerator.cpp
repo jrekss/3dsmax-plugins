@@ -1195,12 +1195,16 @@ namespace
         {
             double tileL = maxL;
             double tileW = cfg.widthL ? maxL : maxW;
-            double insSide = (std::max)(0.0, cfg.octInsertSize) * sc;
-            double insHalfDiag = insSide * 0.7071067811865475;
+            double minTileDim = (std::min)(tileL, tileW);
+            constexpr double k45 = 0.7071067811865475;
+            double maxChamfer = minTileDim * 0.45;
+            double maxAllowedInsDiag = (std::max)(0.0, maxChamfer - 1.41421356 * gapL + 0.5 * (gapL + gapW));
+            double maxAllowedInsSide = maxAllowedInsDiag / k45;
+            double insSide = std::clamp(cfg.octInsertSize * sc, 0.0, maxAllowedInsSide);
+            double insHalfDiag = insSide * k45;
 
             double stepX = tileL + gapL;
             double stepY = tileW + gapW;
-            double maxChamfer = (std::min)(tileL, tileW) * 0.48;
             double rawChamfer = (insSide > 1e-4) ? (insHalfDiag + 1.41421356 * gapL - 0.5 * (gapL + gapW)) : 0.0;
             double c = std::clamp(rawChamfer, 0.0, maxChamfer);
 
@@ -1752,6 +1756,24 @@ void FloorGeneratorMod::UpdateUIControls()
             else if (pat == 4) { SetWindowText(hLbl, _T("Sub Boards")); ShowWindow(hLbl, SW_SHOW); }
             else if (pat == 7) { SetWindowText(hLbl, _T("Insert Size")); ShowWindow(hLbl, SW_SHOW); }
             else ShowWindow(hLbl, SW_HIDE);
+        }
+
+        if (pat == 7)
+        {
+            float lenVal = pblock->GetFloat(pb_length, t);
+            float widVal = pblock->GetFloat(pb_width, t);
+            bool widL = pblock->GetInt(pb_width_l, t) != 0;
+            float gL = pblock->GetFloat(pb_grout_len, t);
+            float gW = pblock->GetInt(pb_grout_l, t) ? gL : pblock->GetFloat(pb_grout_wid, t);
+            float minDim = widL ? lenVal : (std::min)(lenVal, widVal);
+            float maxIns = (std::max)(0.0f, (minDim * 0.45f - 1.41421356f * gL + 0.5f * (gL + gW)) * 1.41421356f);
+            if (ISpinnerControl* sp = GetISpinner(GetDlgItem(hw, IDC_PAT_INSERTSIZE_SPIN)))
+            {
+                sp->SetLimits(0.0f, (std::max)(0.1f, maxIns), TRUE);
+                ReleaseISpinner(sp);
+            }
+            if (pblock->GetFloat(pb_oct_insertsize, t) > maxIns)
+                pblock->SetValue(pb_oct_insertsize, t, maxIns);
         }
     }
 
