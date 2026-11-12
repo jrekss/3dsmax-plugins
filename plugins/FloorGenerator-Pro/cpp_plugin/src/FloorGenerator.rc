@@ -1,0 +1,254 @@
+#include <windows.h>
+#include "resource.h"
+
+#ifndef IDC_STATIC
+#define IDC_STATIC -1
+#endif
+
+/////////////////////////////////////////////////////////////////////////////
+// Dialogs (108 DLU Command Panel Width - 1:1 Original Layout)
+/////////////////////////////////////////////////////////////////////////////
+
+IDD_PANEL_PATTERN DIALOGEX 0, 0, 108, 36
+STYLE DS_SETFONT | WS_CHILD | WS_VISIBLE
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT           "Floor Pattern", IDC_STATIC, 4, 7, 44, 8
+    COMBOBOX        IDC_PAT_COMBO, 50, 4, 54, 90, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+
+    RTEXT           "Parallel Boards", IDC_PAT_DYN_LABEL, 2, 21, 50, 8
+    CONTROL         "", IDC_PAT_PARALLELS_EDIT, "CustEdit", WS_TABSTOP, 55, 20, 32, 10
+    CONTROL         "", IDC_PAT_PARALLELS_SPIN, "SpinnerControl", 0x0000, 87, 20, 7, 10
+
+    CONTROL         "", IDC_PAT_CHEVRON_EDIT, "CustEdit", WS_TABSTOP, 55, 20, 32, 10
+    CONTROL         "", IDC_PAT_CHEVRON_SPIN, "SpinnerControl", 0x0000, 87, 20, 7, 10
+
+    CONTROL         "", IDC_PAT_SUBBOARDS_EDIT, "CustEdit", WS_TABSTOP, 55, 20, 32, 10
+    CONTROL         "", IDC_PAT_SUBBOARDS_SPIN, "SpinnerControl", 0x0000, 87, 20, 7, 10
+
+    CONTROL         "", IDC_PAT_INSERTSIZE_EDIT, "CustEdit", WS_TABSTOP, 55, 20, 32, 10
+    CONTROL         "", IDC_PAT_INSERTSIZE_SPIN, "SpinnerControl", 0x0000, 87, 20, 7, 10
+END
+
+IDD_PANEL_BOARDSIZE DIALOGEX 0, 0, 108, 198
+STYLE DS_SETFONT | WS_CHILD | WS_VISIBLE
+FONT 8, "MS Shell Dlg"
+BEGIN
+    RTEXT           "Max Length", IDC_STATIC, 4, 6, 46, 8
+    CONTROL         "", IDC_LEN_MAX_EDIT, "CustEdit", WS_TABSTOP, 53, 5, 34, 10
+    CONTROL         "", IDC_LEN_MAX_SPIN, "SpinnerControl", 0x0000, 87, 5, 7, 10
+
+    RTEXT           "Min Length", IDC_STATIC, 4, 17, 46, 8
+    CONTROL         "", IDC_LEN_MIN_EDIT, "CustEdit", WS_TABSTOP, 53, 16, 34, 10
+    CONTROL         "", IDC_LEN_MIN_SPIN, "SpinnerControl", 0x0000, 87, 16, 7, 10
+    CONTROL         "L", IDC_LEN_LOCK, "CustButton", WS_TABSTOP, 96, 10, 9, 11
+
+    RTEXT           "Spread", IDC_STATIC, 4, 28, 46, 8
+    CONTROL         "", IDC_LEN_SPR_EDIT, "CustEdit", WS_TABSTOP, 53, 27, 34, 10
+    CONTROL         "", IDC_LEN_SPR_SPIN, "SpinnerControl", 0x0000, 87, 27, 7, 10
+
+    RTEXT           "Max Width", IDC_STATIC, 4, 43, 46, 8
+    CONTROL         "", IDC_WID_MAX_EDIT, "CustEdit", WS_TABSTOP, 53, 42, 34, 10
+    CONTROL         "", IDC_WID_MAX_SPIN, "SpinnerControl", 0x0000, 87, 42, 7, 10
+
+    RTEXT           "Min Width", IDC_STATIC, 4, 54, 46, 8
+    CONTROL         "", IDC_WID_MIN_EDIT, "CustEdit", WS_TABSTOP, 53, 53, 34, 10
+    CONTROL         "", IDC_WID_MIN_SPIN, "SpinnerControl", 0x0000, 87, 53, 7, 10
+    CONTROL         "L", IDC_WID_LOCK, "CustButton", WS_TABSTOP, 96, 47, 9, 11
+
+    RTEXT           "Spread", IDC_STATIC, 4, 65, 46, 8
+    CONTROL         "", IDC_WID_SPR_EDIT, "CustEdit", WS_TABSTOP, 53, 64, 34, 10
+    CONTROL         "", IDC_WID_SPR_SPIN, "SpinnerControl", 0x0000, 87, 64, 7, 10
+
+    RTEXT           "Grout Len", IDC_STATIC, 4, 80, 46, 8
+    CONTROL         "", IDC_GROUT_L_EDIT, "CustEdit", WS_TABSTOP, 53, 79, 34, 10
+    CONTROL         "", IDC_GROUT_L_SPIN, "SpinnerControl", 0x0000, 87, 79, 7, 10
+
+    RTEXT           "Grout Wid", IDC_STATIC, 4, 91, 46, 8
+    CONTROL         "", IDC_GROUT_W_EDIT, "CustEdit", WS_TABSTOP, 53, 90, 34, 10
+    CONTROL         "", IDC_GROUT_W_SPIN, "SpinnerControl", 0x0000, 87, 90, 7, 10
+    CONTROL         "L", IDC_GROUT_LOCK, "CustButton", WS_TABSTOP, 96, 84, 9, 11
+
+    RTEXT           "Min Offset %", IDC_STATIC, 4, 106, 46, 8
+    CONTROL         "", IDC_ROW_MIN_EDIT, "CustEdit", WS_TABSTOP, 53, 105, 34, 10
+    CONTROL         "", IDC_ROW_MIN_SPIN, "SpinnerControl", 0x0000, 87, 105, 7, 10
+
+    RTEXT           "Max Offset %", IDC_STATIC, 4, 117, 46, 8
+    CONTROL         "", IDC_ROW_MAX_EDIT, "CustEdit", WS_TABSTOP, 53, 116, 34, 10
+    CONTROL         "", IDC_ROW_MAX_SPIN, "SpinnerControl", 0x0000, 87, 116, 7, 10
+    CONTROL         "L", IDC_ROW_LOCK, "CustButton", WS_TABSTOP, 96, 110, 9, 11
+
+    CONTROL         "Extrude", IDC_DO_EXTRUDE, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 4, 134, 38, 10
+    LTEXT           "H", IDC_STATIC, 44, 135, 7, 8
+    CONTROL         "", IDC_EXTRUDE_EDIT, "CustEdit", WS_TABSTOP, 53, 134, 34, 10
+    CONTROL         "", IDC_EXTRUDE_SPIN, "SpinnerControl", 0x0000, 87, 134, 7, 10
+
+    CONTROL         "Bevel", IDC_DO_BEVEL, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 4, 145, 34, 10
+    LTEXT           "H", IDC_STATIC, 44, 146, 7, 8
+    CONTROL         "", IDC_BEVEL_EDIT, "CustEdit", WS_TABSTOP, 53, 145, 34, 10
+    CONTROL         "", IDC_BEVEL_SPIN, "SpinnerControl", 0x0000, 87, 145, 7, 10
+
+    RTEXT           "Outline", IDC_STATIC, 4, 157, 46, 8
+    CONTROL         "", IDC_OUTLINE_EDIT, "CustEdit", WS_TABSTOP, 53, 156, 34, 10
+    CONTROL         "", IDC_OUTLINE_SPIN, "SpinnerControl", 0x0000, 87, 156, 7, 10
+    CONTROL         "L", IDC_OUTLINE_LOCK, "CustButton", WS_TABSTOP, 96, 150, 9, 11
+END
+
+IDD_PANEL_VARIATION DIALOGEX 0, 0, 108, 178
+STYLE DS_SETFONT | WS_CHILD | WS_VISIBLE
+FONT 8, "MS Shell Dlg"
+BEGIN
+    RTEXT           "Max Rotation", IDC_STATIC, 2, 6, 48, 8
+    CONTROL         "", IDC_ROT_MAX_EDIT, "CustEdit", WS_TABSTOP, 53, 5, 34, 10
+    CONTROL         "", IDC_ROT_MAX_SPIN, "SpinnerControl", 0x0000, 87, 5, 7, 10
+
+    RTEXT           "Min Rotation", IDC_STATIC, 2, 17, 48, 8
+    CONTROL         "", IDC_ROT_MIN_EDIT, "CustEdit", WS_TABSTOP, 53, 16, 34, 10
+    CONTROL         "", IDC_ROT_MIN_SPIN, "SpinnerControl", 0x0000, 87, 16, 7, 10
+
+    RTEXT           "Spread", IDC_STATIC, 2, 28, 48, 8
+    CONTROL         "", IDC_ROT_SPR_EDIT, "CustEdit", WS_TABSTOP, 53, 27, 34, 10
+    CONTROL         "", IDC_ROT_SPR_SPIN, "SpinnerControl", 0x0000, 87, 27, 7, 10
+
+    RTEXT           "Max Offset X", IDC_STATIC, 2, 43, 48, 8
+    CONTROL         "", IDC_OFFX_MAX_EDIT, "CustEdit", WS_TABSTOP, 53, 42, 34, 10
+    CONTROL         "", IDC_OFFX_MAX_SPIN, "SpinnerControl", 0x0000, 87, 42, 7, 10
+
+    RTEXT           "Min Offset X", IDC_STATIC, 2, 54, 48, 8
+    CONTROL         "", IDC_OFFX_MIN_EDIT, "CustEdit", WS_TABSTOP, 53, 53, 34, 10
+    CONTROL         "", IDC_OFFX_MIN_SPIN, "SpinnerControl", 0x0000, 87, 53, 7, 10
+
+    RTEXT           "Spread", IDC_STATIC, 2, 65, 48, 8
+    CONTROL         "", IDC_OFFX_SPR_EDIT, "CustEdit", WS_TABSTOP, 53, 64, 34, 10
+    CONTROL         "", IDC_OFFX_SPR_SPIN, "SpinnerControl", 0x0000, 87, 64, 7, 10
+
+    CONTROL         "L", IDC_OFFSET_LOCK, "CustButton", WS_TABSTOP, 96, 73, 9, 11
+
+    RTEXT           "Max Offset Y", IDC_STATIC, 2, 82, 48, 8
+    CONTROL         "", IDC_OFFY_MAX_EDIT, "CustEdit", WS_TABSTOP, 53, 81, 34, 10
+    CONTROL         "", IDC_OFFY_MAX_SPIN, "SpinnerControl", 0x0000, 87, 81, 7, 10
+
+    RTEXT           "Min Offset Y", IDC_STATIC, 2, 93, 48, 8
+    CONTROL         "", IDC_OFFY_MIN_EDIT, "CustEdit", WS_TABSTOP, 53, 92, 34, 10
+    CONTROL         "", IDC_OFFY_MIN_SPIN, "SpinnerControl", 0x0000, 87, 92, 7, 10
+
+    RTEXT           "Spread", IDC_STATIC, 2, 104, 48, 8
+    CONTROL         "", IDC_OFFY_SPR_EDIT, "CustEdit", WS_TABSTOP, 53, 103, 34, 10
+    CONTROL         "", IDC_OFFY_SPR_SPIN, "SpinnerControl", 0x0000, 87, 103, 7, 10
+
+    RTEXT           "Max Tilt", IDC_STATIC, 2, 119, 48, 8
+    CONTROL         "", IDC_TILT_MAX_EDIT, "CustEdit", WS_TABSTOP, 53, 118, 34, 10
+    CONTROL         "", IDC_TILT_MAX_SPIN, "SpinnerControl", 0x0000, 87, 118, 7, 10
+
+    RTEXT           "Min Tilt", IDC_STATIC, 2, 130, 48, 8
+    CONTROL         "", IDC_TILT_MIN_EDIT, "CustEdit", WS_TABSTOP, 53, 129, 34, 10
+    CONTROL         "", IDC_TILT_MIN_SPIN, "SpinnerControl", 0x0000, 87, 129, 7, 10
+
+    RTEXT           "Spread", IDC_STATIC, 2, 141, 48, 8
+    CONTROL         "", IDC_TILT_SPR_EDIT, "CustEdit", WS_TABSTOP, 53, 140, 34, 10
+    CONTROL         "", IDC_TILT_SPR_SPIN, "SpinnerControl", 0x0000, 87, 140, 7, 10
+
+    RTEXT           "Max Overlap", IDC_STATIC, 2, 156, 48, 8
+    CONTROL         "", IDC_OVERLAP_EDIT, "CustEdit", WS_TABSTOP, 53, 155, 34, 10
+    CONTROL         "", IDC_OVERLAP_SPIN, "SpinnerControl", 0x0000, 87, 155, 7, 10
+END
+
+IDD_PANEL_GENERAL DIALOGEX 0, 0, 108, 76
+STYLE DS_SETFONT | WS_CHILD | WS_VISIBLE
+FONT 8, "MS Shell Dlg"
+BEGIN
+    RTEXT           "Scale %", IDC_STATIC, 4, 6, 46, 8
+    CONTROL         "", IDC_SCALE_EDIT, "CustEdit", WS_TABSTOP, 53, 5, 34, 10
+    CONTROL         "", IDC_SCALE_SPIN, "SpinnerControl", 0x0000, 87, 5, 7, 10
+
+    RTEXT           "Direction", IDC_STATIC, 4, 17, 46, 8
+    CONTROL         "", IDC_DIR_EDIT, "CustEdit", WS_TABSTOP, 53, 16, 34, 10
+    CONTROL         "", IDC_DIR_SPIN, "SpinnerControl", 0x0000, 87, 16, 7, 10
+
+    RTEXT           "Seed", IDC_STATIC, 4, 28, 46, 8
+    CONTROL         "", IDC_SEED_EDIT, "CustEdit", WS_TABSTOP, 53, 27, 34, 10
+    CONTROL         "", IDC_SEED_SPIN, "SpinnerControl", 0x0000, 87, 27, 7, 10
+
+    RTEXT           "Offset X", IDC_STATIC, 4, 39, 46, 8
+    CONTROL         "", IDC_OBJOFFX_EDIT, "CustEdit", WS_TABSTOP, 53, 38, 34, 10
+    CONTROL         "", IDC_OBJOFFX_SPIN, "SpinnerControl", 0x0000, 87, 38, 7, 10
+
+    RTEXT           "Offset Y", IDC_STATIC, 4, 50, 46, 8
+    CONTROL         "", IDC_OBJOFFY_EDIT, "CustEdit", WS_TABSTOP, 53, 49, 34, 10
+    CONTROL         "", IDC_OBJOFFY_SPIN, "SpinnerControl", 0x0000, 87, 49, 7, 10
+
+    CONTROL         "Weld  Thr.", IDC_DO_WELD, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 4, 61, 46, 10
+    CONTROL         "", IDC_WELD_EDIT, "CustEdit", WS_TABSTOP, 53, 61, 34, 10
+    CONTROL         "", IDC_WELD_SPIN, "SpinnerControl", 0x0000, 87, 61, 7, 10
+END
+
+IDD_PANEL_UV DIALOGEX 0, 0, 108, 66
+STYLE DS_SETFONT | WS_CHILD | WS_VISIBLE
+FONT 8, "MS Shell Dlg"
+BEGIN
+    RTEXT           "UV Channel", IDC_STATIC, 4, 6, 46, 8
+    CONTROL         "", IDC_UV_CHAN_EDIT, "CustEdit", WS_TABSTOP, 53, 5, 34, 10
+    CONTROL         "", IDC_UV_CHAN_SPIN, "SpinnerControl", 0x0000, 87, 5, 7, 10
+
+    CONTROL         "Random Flip Mapping U", IDC_UV_FLIP_U, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 10, 19, 94, 10
+    CONTROL         "Random Flip Mapping V", IDC_UV_FLIP_V, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 10, 30, 94, 10
+    CONTROL         "Random Offset U", IDC_UV_RAND_U, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 10, 41, 94, 10
+    CONTROL         "Random Offset V", IDC_UV_RAND_V, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 10, 52, 94, 10
+END
+
+IDD_PANEL_WARNINGS DIALOGEX 0, 0, 108, 22
+STYLE DS_SETFONT | WS_CHILD | WS_VISIBLE
+FONT 8, "MS Shell Dlg"
+BEGIN
+    RTEXT           "Max Boards", IDC_STATIC, 4, 7, 46, 8
+    CONTROL         "", IDC_WARN_MAX_EDIT, "CustEdit", WS_TABSTOP, 53, 6, 34, 10
+    CONTROL         "", IDC_WARN_MAX_SPIN, "SpinnerControl", 0x0000, 87, 6, 7, 10
+END
+
+IDD_PANEL_UPDATE DIALOGEX 0, 0, 108, 44
+STYLE DS_SETFONT | WS_CHILD | WS_VISIBLE
+FONT 8, "MS Shell Dlg"
+BEGIN
+    CONTROL         "Always", IDC_UPDATE_ALWAYS, "Button", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, 34, 4, 48, 10
+    CONTROL         "Manually", IDC_UPDATE_MANUAL, "Button", BS_AUTORADIOBUTTON | WS_TABSTOP, 34, 15, 48, 10
+    PUSHBUTTON      "Update", IDC_UPDATE_BTN, 14, 27, 80, 13
+END
+
+IDD_PANEL_PRESETS DIALOGEX 0, 0, 108, 24
+STYLE DS_SETFONT | WS_CHILD | WS_VISIBLE
+FONT 8, "MS Shell Dlg"
+BEGIN
+    PUSHBUTTON      "Save", IDC_PRESET_SAVE, 6, 5, 44, 13
+    PUSHBUTTON      "Load", IDC_PRESET_LOAD, 58, 5, 44, 13
+END
+
+IDD_PANEL_CREDITS DIALOGEX 0, 0, 108, 48
+STYLE DS_SETFONT | WS_CHILD | WS_VISIBLE
+FONT 8, "MS Shell Dlg"
+BEGIN
+    CTEXT           "FloorGenerator V2.10", IDC_STATIC, 4, 4, 100, 8
+    CTEXT           "Created by", IDC_STATIC, 4, 13, 100, 8
+    CTEXT           "CG-Source.com", IDC_CREDITS_LINK, 4, 22, 100, 8
+    CTEXT           "Extended Pro Edition", IDC_STATIC, 4, 33, 100, 8
+END
+
+/////////////////////////////////////////////////////////////////////////////
+// String Table
+/////////////////////////////////////////////////////////////////////////////
+
+STRINGTABLE
+BEGIN
+    IDS_LIBDESCRIPTION      "FloorGenerator v2.10 Pro Modifier"
+    IDS_CATEGORY            "FloorGenerator"
+    IDS_CLASS_NAME          "FloorGenerator v2"
+    IDS_PARAMS              "Parameters"
+    IDS_ROL_PATTERN         "Floor Pattern"
+    IDS_ROL_BOARDSIZE       "Board Size"
+    IDS_ROL_VARIATION       "Variation Per Board"
+    IDS_ROL_GENERAL         "General"
+    IDS_ROL_UV              "UV Settings"
+    IDS_ROL_WARNINGS        "Warnings"
+    IDS_ROL_UPDATE          "Update"
+    IDS_ROL_PRESETS         "Save/Load Presets"
+    IDS_ROL_CREDITS         "Credits"
+END

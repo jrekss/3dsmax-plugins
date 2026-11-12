@@ -1,0 +1,28 @@
+# Build directories & CMake artifacts
+build/
+**/build/
+out/
+*.user
+*.suo
+*.sln
+*.vcxproj*
+*.filters
+.vs/
+
+# Compiled intermediate files
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.dll
+
+# Keep final .dlm in dist/, ignore temporary .dlm elsewhere
+*.dlm
+!**/dist/*.dlm
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+*.tmp
+*.bak

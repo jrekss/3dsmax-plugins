@@ -1,0 +1,26 @@
+# Build directories & CMake artifacts
+build/
+cpp_plugin/build/
+out/
+*.user
+*.suo
+*.sln
+*.vcxproj*
+*.filters
+.vs/
+
+# Compiled binaries & debug symbols
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.dll
+*.dlm
+!dist/
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+*.tmp
+*.bak
