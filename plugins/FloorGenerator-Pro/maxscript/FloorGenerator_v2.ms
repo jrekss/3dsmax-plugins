@@ -1730,6 +1730,8 @@ plugin simpleMeshMod FloorGenerator_v2
         ChevronAngle         type:#float      default:45.0  animatable:true  ui:spnChevronAngle
         BasketWeaveSubBoards type:#integer    default:3     animatable:true  ui:spnSubBoards
         OctagonInsertSize    type:#worldUnits default:200.0 animatable:true  ui:spnInsertSize
+
+        on FloorPattern set val do this.refreshAllRollouts()
     )
 
     parameters pBoardSize rollout:rolFG_BoardSize
@@ -2011,14 +2013,14 @@ plugin simpleMeshMod FloorGenerator_v2
     )
 
     -- 1. Rollout: Floor Pattern
-    rollout rolFG_Pattern "Floor Pattern" width:162
+    rollout rolFG_Pattern "Floor Pattern" width:162 height:26
     (
         label lblPat "Floor Pattern" align:#left offset:[-5, 1] across:2
         dropdownList ddPattern "" items:#("Standard", "Herringbone", "Chevron", "Basket Weave", "Hexagon", "Triangle", "Octagon") selection:1 width:82 align:#right offset:[6, -2]
-        spinner spnParallels "Parallel Boards " range:[1,100,1] type:#integer fieldwidth:56 align:#right offset:[-12, -2] visible:false
-        spinner spnChevronAngle "Angle " range:[1.0,85.0,45.0] type:#float scale:0.5 fieldwidth:56 align:#right offset:[-12, -21] visible:false
-        spinner spnSubBoards "Sub Boards " range:[1,100,3] type:#integer fieldwidth:56 align:#right offset:[-12, -21] visible:false
-        spinner spnInsertSize "Insert Size " range:[0.0,1e6,200.0] type:#worldUnits fieldwidth:56 align:#right offset:[-12, -21] visible:false
+        spinner spnParallels "Parallel Boards " range:[1,100,1] type:#integer fieldwidth:56 pos:[85, 25] visible:false
+        spinner spnChevronAngle "Angle " range:[1.0,85.0,45.0] type:#float scale:0.5 fieldwidth:56 pos:[85, 25] visible:false
+        spinner spnSubBoards "Sub Boards " range:[1,100,3] type:#integer fieldwidth:56 pos:[85, 25] visible:false
+        spinner spnInsertSize "Insert Size " range:[0.0,1e6,200.0] type:#worldUnits fieldwidth:56 pos:[85, 25] visible:false
 
         on rolFG_Pattern open do this.refreshAllRollouts()
         on ddPattern selected idx do this.refreshAllRollouts()

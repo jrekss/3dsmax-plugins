@@ -1758,6 +1758,33 @@ void FloorGeneratorMod::UpdateUIControls()
             else ShowWindow(hLbl, SW_HIDE);
         }
 
+        // Dynamically resize Floor Pattern rollup panel so there is no empty space when no sub-parameter is visible
+        const bool hasSubParam = (pat == 2 || pat == 3 || pat == 4 || pat == 7);
+        RECT rc{ 0, 0, 108, hasSubParam ? 36 : 20 };
+        MapDialogRect(hw, &rc);
+        const int targetHeightPx = rc.bottom - rc.top;
+        IRollupWindow* rw = mPat->GetIRollup();
+        bool releaseRw = false;
+        if (!rw && ip)
+        {
+            rw = ip->GetCommandPanelRollup();
+        }
+        if (!rw && hw)
+        {
+            HWND hParent = GetParent(GetParent(hw));
+            if (hParent) { rw = GetIRollup(hParent); releaseRw = (rw != nullptr); }
+        }
+        if (rw)
+        {
+            int pageIdx = rw->GetPanelIndex(hw);
+            if (pageIdx >= 0 && rw->GetPageDlgHeight(pageIdx) != targetHeightPx)
+            {
+                rw->SetPageDlgHeight(pageIdx, targetHeightPx);
+                rw->UpdateLayout();
+            }
+            if (releaseRw) ReleaseIRollup(rw);
+        }
+
         if (pat == 7)
         {
             float lenVal = pblock->GetFloat(pb_length, t);
