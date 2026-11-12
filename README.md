@@ -4,10 +4,12 @@
 
 ## Содержимое коллекции
 
-### Нативные плагины и модификаторы (`plugins/`)
-| Название | Версия | Описание |
-| :--- | :--- | :--- |
-| **[FloorGenerator-Pro](plugins/FloorGenerator-Pro/)** | v2.10 Pro | Нативный C++ модификатор (`.dlm`) + MAXScript-версия. 7 паттернов укладки (`Standard`, `Herringbone`, `Chevron`, `Basket Weave`, `Hexagon`, `Triangle`, `Octagon`), `Spread`-распределение, фаски, UVW-развёртка и `.ini`-пресеты. |
+### Плагины и модификаторы (`plugins/`)
+| Название | Описание |
+| :--- | :--- |
+| **[FloorGenerator-Pro](plugins/FloorGenerator-Pro/)** | Нативный C++ модификатор (`.dlm`) + MAXScript v2.10. 7 паттернов укладки (`Standard`, `Herringbone`, `Chevron`, `Basket Weave`, `Hexagon`, `Triangle`, `Octagon`), `Spread`-распределение, фаски, UVW-развёртка и `.ini`-пресеты. |
+| **[Collect-Assets](plugins/Collect-Assets/)** | Сбор и упаковка всех текстур, прокси и ассетов сцены 3ds Max в единый архив/папку. |
+| **[batchcam2027](plugins/batchcam2027/)** | Batch Camera Render — пакетный рендер камер и сцен в 3ds Max. |
 
 ### Скрипты и утилиты (`scripts/`)
 *Раздел для отдельных `.ms` / `.mzp` инструментов.*
