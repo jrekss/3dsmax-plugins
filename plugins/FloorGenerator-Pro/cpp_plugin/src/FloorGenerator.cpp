@@ -62,6 +62,10 @@ namespace
         bool bevelL = true;
         double outline = 0.5;
 
+        bool doGrout = false;
+        double groutDepth = 0.5;
+        int groutMatID = 3;
+
         double maxRot = 0.0;
         double minRot = 0.0;
         double rotSpread = 0.5;
@@ -1252,6 +1256,54 @@ namespace
 
         if (out.faces.empty()) return false;
 
+        // Ultra-Lightweight Grout Mesh (Single Base Footprint Layer)
+        if (cfg.doGrout && (gapL > 1e-5 || gapW > 1e-5))
+        {
+            const double effExtrude = cfg.doExtrude ? extrudeH : 0.0;
+            const double effBevel = cfg.doBevel ? bevelH : 0.0;
+            const double zBoardTop = effExtrude + effBevel;
+            const double gDepth = (std::max)(0.0, cfg.groutDepth * sc);
+            const float zGroutTop = static_cast<float>((std::max)(0.0, zBoardTop - gDepth));
+            const MtlID gMatID = static_cast<MtlID>((std::max)(1, cfg.groutMatID));
+            const double invSpanX = (bbSpanX > 1e-5) ? (1.0 / bbSpanX) : 1.0;
+            const double invSpanY = (bbSpanY > 1e-5) ? (1.0 / bbSpanY) : 1.0;
+
+            const DWORD gTopStart = static_cast<DWORD>(out.verts.size());
+            for (int v = 0; v < numBaseVerts; ++v)
+            {
+                const Vec2& p2d = baseVerts2D[v];
+                float u = static_cast<float>((p2d.x - bbMinX) * invSpanX);
+                float vCoord = static_cast<float>((p2d.y - bbMinY) * invSpanY);
+                Point3 wp(static_cast<float>(p2d.x), static_cast<float>(p2d.y), zGroutTop);
+                if (postPtr) wp = wp * (*postPtr);
+                out.verts.push_back(wp);
+                out.tverts.emplace_back(u, vCoord, zGroutTop);
+            }
+
+            const int numBaseFaces = ioMesh.getNumFaces();
+            for (int f = 0; f < numBaseFaces; ++f)
+            {
+                const Face& fc = ioMesh.faces[f];
+                const Vec2& p1 = baseVerts2D[fc.v[0]];
+                const Vec2& p2 = baseVerts2D[fc.v[1]];
+                const Vec2& p3 = baseVerts2D[fc.v[2]];
+                double a2 = (p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x);
+                if (std::abs(a2) > 1e-5)
+                {
+                    DWORD v1 = gTopStart + fc.v[0];
+                    DWORD v2 = gTopStart + fc.v[1];
+                    DWORD v3 = gTopStart + fc.v[2];
+                    bool ev0 = fc.getEdgeVis(0) != 0;
+                    bool ev1 = fc.getEdgeVis(1) != 0;
+                    bool ev2 = fc.getEdgeVis(2) != 0;
+                    if (a2 > 0.0)
+                        out.faces.push_back({ { v1, v2, v3 }, gMatID, 8u, { ev0, ev1, ev2 } });
+                    else
+                        out.faces.push_back({ { v1, v3, v2 }, gMatID, 8u, { ev2, ev1, ev0 } });
+                }
+            }
+        }
+
         // Transform back to 3D plane
         fromPlaneTM.SetRow(3, planeOffset);
         const int numV = static_cast<int>(out.verts.size());
@@ -1512,6 +1564,15 @@ static ParamBlockDesc2 floorGenParamBlk(
         p_default, 0.5f, p_range, 0.0f, 100000.0f,
         p_ui, MAP_BOARDSIZE, TYPE_SPINNER, EDITTYPE_UNIVERSE, IDC_OUTLINE_EDIT, IDC_OUTLINE_SPIN, 0.05f, p_end,
 
+    pb_do_grout, _T("DoGrout"), TYPE_BOOL, 0, IDS_ROL_BOARDSIZE,
+        p_default, FALSE, p_ui, MAP_BOARDSIZE, TYPE_SINGLECHECKBOX, IDC_DO_GROUT, p_end,
+    pb_grout_depth, _T("GroutDepth"), TYPE_WORLD, P_ANIMATABLE, IDS_ROL_BOARDSIZE,
+        p_default, 0.5f, p_range, 0.0f, 100000.0f,
+        p_ui, MAP_BOARDSIZE, TYPE_SPINNER, EDITTYPE_UNIVERSE, IDC_GROUT_DEPTH_EDIT, IDC_GROUT_DEPTH_SPIN, 0.05f, p_end,
+    pb_grout_matid, _T("GroutMatID"), TYPE_INT, 0, IDS_ROL_BOARDSIZE,
+        p_default, 3, p_range, 1, 65535,
+        p_ui, MAP_BOARDSIZE, TYPE_SPINNER, EDITTYPE_INT, IDC_GROUT_MATID_EDIT, IDC_GROUT_MATID_SPIN, 1.0f, p_end,
+
     // Variation params
     pb_max_rot, _T("MaxRotation"), TYPE_FLOAT, P_ANIMATABLE, IDS_ROL_VARIATION,
         p_default, 0.0f, p_range, 0.0f, 100.0f,
@@ -1703,6 +1764,7 @@ void FloorGeneratorMod::UpdateUIControls()
         bool doExt = pblock->GetInt(pb_do_extrude, t) != 0;
         bool doBev = pblock->GetInt(pb_do_bevel, t) != 0;
         bool bevL = pblock->GetInt(pb_bevel_l, t) != 0;
+        bool doGr = pblock->GetInt(pb_do_grout, t) != 0;
 
         mBS->Enable(pb_length_r, isStd && !lenL);
         mBS->Enable(pb_length_s, isStd && !lenL);
@@ -1724,6 +1786,8 @@ void FloorGeneratorMod::UpdateUIControls()
         mBS->Enable(pb_bevel, doBev);
         mBS->Enable(pb_outline, doBev && !bevL);
         mBS->Enable(pb_bevel_l, doBev);
+        mBS->Enable(pb_grout_depth, doGr);
+        mBS->Enable(pb_grout_matid, doGr);
     }
 
     if (IParamMap2* mVar = pblock->GetMap(MAP_VARIATION))
@@ -1796,6 +1860,9 @@ void FloorGeneratorMod::ModifyObject(TimeValue t, ModContext& /*mc*/, ObjectStat
     cfg.bevel = pblock->GetFloat(pb_bevel, t);
     cfg.bevelL = pblock->GetInt(pb_bevel_l, t) != 0;
     cfg.outline = cfg.bevelL ? cfg.bevel : pblock->GetFloat(pb_outline, t);
+    cfg.doGrout = pblock->GetInt(pb_do_grout, t) != 0;
+    cfg.groutDepth = pblock->GetFloat(pb_grout_depth, t);
+    cfg.groutMatID = pblock->GetInt(pb_grout_matid, t);
 
     cfg.maxRot = pblock->GetFloat(pb_max_rot, t);
     cfg.minRot = pblock->GetFloat(pb_min_rot, t);
@@ -1879,6 +1946,9 @@ void FloorGeneratorMod::SavePresetINI(const MCHAR* path, TimeValue t)
     writeStr(_T("GroutLength"), std::to_wstring(pblock->GetFloat(pb_grout_len, t)));
     writeStr(_T("GroutWidth"), std::to_wstring(pblock->GetFloat(pb_grout_wid, t)));
     writeStr(_T("Grout_L"), pblock->GetInt(pb_grout_l, t) ? _T("1") : _T("0"));
+    writeStr(_T("DoGrout"), pblock->GetInt(pb_do_grout, t) ? _T("1") : _T("0"));
+    writeStr(_T("GroutDepth"), std::to_wstring(pblock->GetFloat(pb_grout_depth, t)));
+    writeStr(_T("GroutMatID"), std::to_wstring(pblock->GetInt(pb_grout_matid, t)));
     writeStr(_T("Scale"), std::to_wstring(pblock->GetFloat(pb_scale, t) * 0.01));
     writeStr(_T("Direction"), std::to_wstring(pblock->GetFloat(pb_direction, t) * kDegToRad));
     writeStr(_T("Seed"), std::to_wstring(pblock->GetInt(pb_seed, t)));
@@ -1926,6 +1996,9 @@ void FloorGeneratorMod::LoadPresetINI(const MCHAR* path, TimeValue t)
     pblock->SetValue(pb_grout_l, t, readInt(_T("Grout_L"), 1) != 0);
     pblock->SetValue(pb_grout_len, t, readFloat(_T("GroutLength"), 0.2f));
     pblock->SetValue(pb_grout_wid, t, readFloat(_T("GroutWidth"), 0.2f));
+    pblock->SetValue(pb_do_grout, t, readInt(_T("DoGrout"), 0) != 0);
+    pblock->SetValue(pb_grout_depth, t, readFloat(_T("GroutDepth"), 0.5f));
+    pblock->SetValue(pb_grout_matid, t, readInt(_T("GroutMatID"), 3));
     pblock->SetValue(pb_scale, t, readFloat(_T("Scale"), 1.0f) * 100.0f);
     pblock->SetValue(pb_direction, t, static_cast<float>(readFloat(_T("Direction"), 0.0f) * kRadToDeg));
     pblock->SetValue(pb_seed, t, readInt(_T("Seed"), 12345));

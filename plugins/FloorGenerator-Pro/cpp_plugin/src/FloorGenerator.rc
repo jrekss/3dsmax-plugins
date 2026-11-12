@@ -92,6 +92,15 @@ BEGIN
     CONTROL         "", IDC_OUTLINE_EDIT, "CustEdit", WS_TABSTOP, 53, 156, 34, 10
     CONTROL         "", IDC_OUTLINE_SPIN, "SpinnerControl", 0x0000, 87, 156, 7, 10
     CONTROL         "L", IDC_OUTLINE_LOCK, "CustButton", WS_TABSTOP, 96, 150, 9, 11
+
+    CONTROL         "Grout", IDC_DO_GROUT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 4, 171, 31, 10
+    RTEXT           "Depth", IDC_STATIC, 35, 172, 16, 8
+    CONTROL         "", IDC_GROUT_DEPTH_EDIT, "CustEdit", WS_TABSTOP, 53, 171, 34, 10
+    CONTROL         "", IDC_GROUT_DEPTH_SPIN, "SpinnerControl", 0x0000, 87, 171, 7, 10
+
+    RTEXT           "Grout ID", IDC_STATIC, 4, 183, 46, 8
+    CONTROL         "", IDC_GROUT_MATID_EDIT, "CustEdit", WS_TABSTOP, 53, 182, 34, 10
+    CONTROL         "", IDC_GROUT_MATID_SPIN, "SpinnerControl", 0x0000, 87, 182, 7, 10
 END
 
 IDD_PANEL_VARIATION DIALOGEX 0, 0, 108, 178

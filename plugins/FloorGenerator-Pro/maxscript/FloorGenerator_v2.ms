@@ -48,6 +48,10 @@ struct FGv2_Config
     BevelL = true,
     Outline = 0.5,
 
+    DoGrout = false,
+    GroutDepth = 0.5,
+    GroutMatID = 3,
+
     MaxRotation = 0.0,
     Rotation_R = 0.0,
     RotationSpread = 0.5,
@@ -1416,6 +1420,63 @@ struct FGv2_EngineStruct
 
         if outFaces.count == 0 do return false
 
+        -- 5b. Ultra-Lightweight Grout Mesh (Single Base Footprint Layer)
+        if cfg.DoGrout and (gapL > 1e-5 or gapW > 1e-5) do
+        (
+            local effExtrude = if cfg.DoExtrude then extrudeH else 0.0
+            local effBevel   = if cfg.DoBevel then bevelH else 0.0
+            local zBoardTop  = effExtrude + effBevel
+            local gDepth     = amax 0.0 (cfg.GroutDepth * sc)
+            local zGroutTop  = amax 0.0 (zBoardTop - gDepth)
+            local gMatID     = amax 1 (cfg.GroutMatID as integer)
+            local invSpanX   = if bbSpanX > 1e-5 then (1.0 / bbSpanX) else 1.0
+            local invSpanY   = if bbSpanY > 1e-5 then (1.0 / bbSpanY) else 1.0
+
+            -- Add top grout surface vertices mapped 1:1 from baseVerts2D
+            local gTopStart = outVerts.count
+            for v = 1 to numBaseVerts do
+            (
+                local p2d = baseVerts2D[v]
+                local u = (p2d.x - bbMinX) * invSpanX
+                local vCoord = (p2d.y - bbMinY) * invSpanY
+                local wp = [p2d.x, p2d.y, zGroutTop]
+                if dirPostTM != undefined do wp = wp * dirPostTM
+                append outVerts wp
+                append outTVerts [u, vCoord, zGroutTop]
+            )
+
+            -- Emit original base footprint triangles at zGroutTop (+2 faces for a rectangular room!)
+            for f = 1 to ioMesh.numFaces do
+            (
+                local fv = getFace ioMesh f
+                local p1 = baseVerts2D[fv.x]
+                local p2 = baseVerts2D[fv.y]
+                local p3 = baseVerts2D[fv.z]
+                local a2 = (p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x)
+                if abs a2 > 1e-5 do
+                (
+                    local v1 = gTopStart + (fv.x as integer)
+                    local v2 = gTopStart + (fv.y as integer)
+                    local v3 = gTopStart + (fv.z as integer)
+                    local ev1 = getEdgeVis ioMesh f 1
+                    local ev2 = getEdgeVis ioMesh f 2
+                    local ev3 = getEdgeVis ioMesh f 3
+                    if a2 > 0.0 then
+                    (
+                        append outFaces [v1, v2, v3]
+                        append outEdgeVis #(ev1, ev2, ev3)
+                    )
+                    else
+                    (
+                        append outFaces [v1, v3, v2]
+                        append outEdgeVis #(ev3, ev2, ev1)
+                    )
+                    append outMatIDs gMatID
+                    append outSmGroups 8
+                )
+            )
+        )
+
         -- 6. Transform back
         fromPlaneTM.row4 = planeOffset
         for i = 1 to outVerts.count do
@@ -1518,6 +1579,9 @@ struct FGv2_EngineStruct
         setINISetting filePath sec "Bevel" (cfg.Bevel as string)
         setINISetting filePath sec "BevelL" (if cfg.BevelL then "1" else "0")
         setINISetting filePath sec "Outline" (cfg.Outline as string)
+        setINISetting filePath sec "DoGrout" (if cfg.DoGrout then "1" else "0")
+        setINISetting filePath sec "GroutDepth" (cfg.GroutDepth as string)
+        setINISetting filePath sec "GroutMatID" (cfg.GroutMatID as string)
 
         setINISetting filePath sec "MaxRotation" ((cfg.MaxRotation * 0.01) as string)
         setINISetting filePath sec "Rotation_R" ((cfg.Rotation_R * 0.01) as string)
@@ -1600,6 +1664,9 @@ struct FGv2_EngineStruct
         cfg.Bevel     = this.readIniFloat filePath sec "Bevel" cfg.Bevel
         cfg.BevelL    = this.readIniBool filePath sec "BevelL" cfg.BevelL
         cfg.Outline   = this.readIniFloat filePath sec "Outline" cfg.Outline
+        cfg.DoGrout    = this.readIniBool filePath sec "DoGrout" cfg.DoGrout
+        cfg.GroutDepth = this.readIniFloat filePath sec "GroutDepth" cfg.GroutDepth
+        cfg.GroutMatID = this.readIniInt filePath sec "GroutMatID" cfg.GroutMatID
 
         cfg.MaxRotation    = (this.readIniFloat filePath sec "MaxRotation" (cfg.MaxRotation * 0.01)) * 100.0
         cfg.Rotation_R     = (this.readIniFloat filePath sec "Rotation_R" (cfg.Rotation_R * 0.01)) * 100.0
@@ -1688,6 +1755,10 @@ plugin simpleMeshMod FloorGenerator_v2
         BevelL               type:#boolean    default:true   animatable:false ui:btnLockOutline
         Outline              type:#worldUnits default:0.5    animatable:true  ui:spnOutline
 
+        DoGrout              type:#boolean    default:false  animatable:false ui:chkDoGrout
+        GroutDepth           type:#worldUnits default:0.5    animatable:true  ui:spnGroutDepth
+        GroutMatID           type:#integer    default:3      animatable:false ui:spnGroutMatID
+
         on Length set val do (if Length_L do Length_R = val)
         on Width set val do (if Width_L do Width_R = val)
         on GroutLength set val do (if Grout_L do GroutWidth = val)
@@ -1767,6 +1838,7 @@ plugin simpleMeshMod FloorGenerator_v2
             GroutLength:GroutLength GroutWidth:GroutWidth Grout_L:Grout_L \
             MinRowOffset:MinRowOffset MaxRowOffset:MaxRowOffset RowOffset_L:RowOffset_L \
             DoExtrude:DoExtrude Extrude:Extrude DoBevel:DoBevel Bevel:Bevel BevelL:BevelL Outline:Outline \
+            DoGrout:DoGrout GroutDepth:GroutDepth GroutMatID:GroutMatID \
             MaxRotation:MaxRotation Rotation_R:Rotation_R RotationSpread:RotationSpread \
             Offset_X:Offset_X Offset_X_R:Offset_X_R Offset_X_S:Offset_X_S \
             Offset_Y:Offset_Y Offset_Y_R:Offset_Y_R Offset_Y_S:Offset_Y_S Offset_L:Offset_L \
@@ -1817,6 +1889,8 @@ plugin simpleMeshMod FloorGenerator_v2
             this.rolFG_BoardSize.spnBevel.enabled   = DoBevel
             this.rolFG_BoardSize.spnOutline.enabled = DoBevel and (not BevelL)
             this.rolFG_BoardSize.btnLockOutline.enabled = DoBevel
+            this.rolFG_BoardSize.spnGroutDepth.enabled  = DoGrout
+            this.rolFG_BoardSize.spnGroutMatID.enabled  = DoGrout
         )
         if this.rolFG_Variation != undefined and this.rolFG_Variation.open do
         (
@@ -1865,6 +1939,9 @@ plugin simpleMeshMod FloorGenerator_v2
         DoBevel = cfg.DoBevel
         Bevel = cfg.Bevel
         Outline = cfg.Outline
+        DoGrout = cfg.DoGrout
+        GroutDepth = cfg.GroutDepth
+        GroutMatID = cfg.GroutMatID
         MaxRotation = cfg.MaxRotation
         Rotation_R = cfg.Rotation_R
         RotationSpread = cfg.RotationSpread
@@ -1938,11 +2015,16 @@ plugin simpleMeshMod FloorGenerator_v2
 
         spinner spnOutline "Outline " range:[0.0,1e5,0.5] type:#worldUnits scale:0.05 fieldwidth:56 align:#right offset:[-12, -4]
         checkbutton btnLockOutline "L" width:13 height:16 align:#right offset:[4, -29] highlightColor:lockHighlightCol toolTip:"Lock Bevel Height / Outline"
+
+        checkbox chkDoGrout "Grout" align:#left offset:[-5, 6] checked:false toolTip:"Generate ultra-lightweight 3D Grout base mesh under gaps"
+        spinner spnGroutDepth "Depth " range:[0.0,1e5,0.5] type:#worldUnits scale:0.05 fieldwidth:56 align:#right offset:[-12, -20]
+        spinner spnGroutMatID "Grout ID " range:[1,65535,3] type:#integer fieldwidth:56 align:#right offset:[-12, -4]
         label lblPadBS "" height:1 align:#left offset:[0, 2]
 
         on rolFG_BoardSize open do this.refreshAllRollouts()
         on chkDoExtrude changed state do this.refreshAllRollouts()
         on chkDoBevel changed state do this.refreshAllRollouts()
+        on chkDoGrout changed state do this.refreshAllRollouts()
 
         on btnLockLength changed state do
         (
@@ -2192,6 +2274,9 @@ try (if FGv2_Floater != undefined do closeRolloutFloater FGv2_Floater) catch ()
             rolFloat_BoardSize.spnBevel.value   = uiCfg.Bevel
             rolFloat_BoardSize.btnLockOutline.state = uiCfg.BevelL
             rolFloat_BoardSize.spnOutline.value = uiCfg.Outline
+            rolFloat_BoardSize.chkDoGrout.checked   = uiCfg.DoGrout
+            rolFloat_BoardSize.spnGroutDepth.value  = uiCfg.GroutDepth
+            rolFloat_BoardSize.spnGroutMatID.value  = uiCfg.GroutMatID
 
             rolFloat_BoardSize.spnLengthR.enabled = isStd and (not uiCfg.Length_L)
             rolFloat_BoardSize.spnLengthS.enabled = isStd and (not uiCfg.Length_L)
@@ -2213,6 +2298,8 @@ try (if FGv2_Floater != undefined do closeRolloutFloater FGv2_Floater) catch ()
             rolFloat_BoardSize.spnBevel.enabled   = uiCfg.DoBevel
             rolFloat_BoardSize.spnOutline.enabled = uiCfg.DoBevel and (not uiCfg.BevelL)
             rolFloat_BoardSize.btnLockOutline.enabled = uiCfg.DoBevel
+            rolFloat_BoardSize.spnGroutDepth.enabled  = uiCfg.DoGrout
+            rolFloat_BoardSize.spnGroutMatID.enabled  = uiCfg.DoGrout
         )
 
         if rolFloat_Variation != undefined and rolFloat_Variation.open do
@@ -2427,6 +2514,10 @@ try (if FGv2_Floater != undefined do closeRolloutFloater FGv2_Floater) catch ()
 
         spinner spnOutline "Outline " range:[0.0,1e5,0.5] type:#worldUnits scale:0.05 fieldwidth:56 align:#right offset:[-12, -4]
         checkbutton btnLockOutline "L" width:13 height:16 align:#right offset:[4, -29] checked:true highlightColor:lockHighlightCol toolTip:"Lock Bevel Height / Outline"
+
+        checkbox chkDoGrout "Grout" align:#left offset:[-5, 6] checked:false toolTip:"Generate ultra-lightweight 3D Grout base mesh under gaps"
+        spinner spnGroutDepth "Depth " range:[0.0,1e5,0.5] type:#worldUnits scale:0.05 fieldwidth:56 align:#right offset:[-12, -20]
+        spinner spnGroutMatID "Grout ID " range:[1,65535,3] type:#integer fieldwidth:56 align:#right offset:[-12, -4]
         label lblPadBS "" height:1 align:#left offset:[0, 2]
 
         on rolFloat_BoardSize open do refreshFloaterUI()
@@ -2455,6 +2546,9 @@ try (if FGv2_Floater != undefined do closeRolloutFloater FGv2_Floater) catch ()
         on spnBevel changed val do (uiCfg.Bevel = val; if uiCfg.BevelL do (uiCfg.Outline = val; spnOutline.value = val); pushFloaterToActiveModifier())
         on spnOutline changed val do (uiCfg.Outline = val; pushFloaterToActiveModifier())
         on btnLockOutline changed state do (uiCfg.BevelL = state; if state do uiCfg.Outline = uiCfg.Bevel; refreshFloaterUI(); pushFloaterToActiveModifier())
+        on chkDoGrout changed state do (uiCfg.DoGrout = state; refreshFloaterUI(); pushFloaterToActiveModifier())
+        on spnGroutDepth changed val do (uiCfg.GroutDepth = val; pushFloaterToActiveModifier())
+        on spnGroutMatID changed val do (uiCfg.GroutMatID = val; pushFloaterToActiveModifier())
     )
 
     -- 3. Variation Per Board Rollout

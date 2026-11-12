@@ -63,6 +63,9 @@ enum ParamIDs
     pb_bevel,
     pb_bevel_l,
     pb_outline,
+    pb_do_grout,
+    pb_grout_depth,
+    pb_grout_matid,
 
     // Variation
     pb_max_rot,

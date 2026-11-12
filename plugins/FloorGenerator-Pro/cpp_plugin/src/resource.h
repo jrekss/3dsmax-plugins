@@ -77,6 +77,11 @@
 #define IDC_OUTLINE_EDIT            1147
 #define IDC_OUTLINE_SPIN            1148
 #define IDC_OUTLINE_LOCK            1149
+#define IDC_DO_GROUT                1150
+#define IDC_GROUT_DEPTH_EDIT        1151
+#define IDC_GROUT_DEPTH_SPIN        1152
+#define IDC_GROUT_MATID_EDIT        1153
+#define IDC_GROUT_MATID_SPIN        1154
 
 // Variation controls
 #define IDC_ROT_MAX_EDIT            1201
