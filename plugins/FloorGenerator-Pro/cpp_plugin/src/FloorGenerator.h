@@ -8,6 +8,7 @@
 #include "meshadj.h"
 #include "MeshDelta.h"
 #include "modstack.h"
+#include "objmode.h"
 #include "utilapi.h"
 
 #include <vector>
@@ -24,6 +25,7 @@ enum RolloutMapIDs
 {
     MAP_PATTERN = 0,
     MAP_BOARDSIZE,
+    MAP_BORDER,
     MAP_VARIATION,
     MAP_GENERAL,
     MAP_UV,
@@ -101,7 +103,18 @@ enum ParamIDs
 
     // Warnings & Update
     pb_warn_max,
-    pb_live_update
+    pb_live_update,
+
+    // Border
+    pb_do_border,
+    pb_border_width,
+    pb_border_offset,
+    pb_border_cut_mode,
+    pb_border_matid,
+    pb_border_off_bot,
+    pb_border_off_top,
+    pb_border_off_left,
+    pb_border_off_right
 };
 
 class FloorGeneratorMod : public Modifier
@@ -112,14 +125,26 @@ public:
     bool hasCachedMesh = false;
     bool forceRefresh = false;
 
+    // Sub-Object border line editing state (0:Bottom, 1:Top, 2:Left, 3:Right)
+    bool borderLineSel[4] = { false, false, false, false };
+    bool hasCachedPlane = false;
+    Matrix3 lastFromPlaneTM;
+    Matrix3 lastToPlaneTM;
+    double lastRoomMinX = 0.0;
+    double lastRoomMinY = 0.0;
+    double lastRoomMaxX = 0.0;
+    double lastRoomMaxY = 0.0;
+    float lastZTop = 0.0f;
+
     static IObjParam* ip;
+    static MoveModBoxCMode* moveMode;
 
     FloorGeneratorMod();
     ~FloorGeneratorMod() override = default;
 
     // Animatable
     void DeleteThis() override { delete this; }
-    void GetClassName(MSTR& s, bool localized) const override { s = _T("FloorGenerator v2"); }
+    void GetClassName(MSTR& s, bool localized) const override { s = _T("FloorGenerator v2.1"); }
     Class_ID ClassID() override { return FLOORGEN_CLASS_ID; }
     SClass_ID SuperClassID() override { return OSM_CLASS_ID; }
 
@@ -138,20 +163,36 @@ public:
     RefResult NotifyRefChanged(const Interval& changeInt, RefTargetHandle hTarget, PartID& partID, RefMessage message, BOOL propagate) override;
     RefTargetHandle Clone(RemapDir& remap) override;
 
-    // BaseObject
+    // BaseObject & Sub-Object Support
     CreateMouseCallBack* GetCreateMouseCallBack() override { return nullptr; }
     void BeginEditParams(IObjParam* ip, ULONG flags, Animatable* prev) override;
     void EndEditParams(IObjParam* ip, ULONG flags, Animatable* next) override;
-    const TCHAR* GetObjectName(bool localized) const override { return _T("FloorGenerator v2"); }
+    const TCHAR* GetObjectName(bool localized) const override { return _T("FloorGenerator v2.1"); }
+
+    int HitTest(TimeValue t, INode* inode, int type, int crossing, int flags, IPoint2* p, ViewExp* vpt, ModContext* mc) override;
+    int Display(TimeValue t, INode* inode, ViewExp* vpt, int flags, ModContext* mc) override;
+    void GetWorldBoundBox(TimeValue t, INode* inode, ViewExp* vpt, Box3& box, ModContext* mc) override;
+    void Move(TimeValue t, Matrix3& partm, Matrix3& tmAxis, Point3& val, BOOL localOrigin = FALSE) override;
+    void GetSubObjectCenters(SubObjAxisCallback* cb, TimeValue t, INode* node, ModContext* mc) override;
+    void GetSubObjectTMs(SubObjAxisCallback* cb, TimeValue t, INode* node, ModContext* mc) override;
+    void ActivateSubobjSel(int level, XFormModes& modes) override;
+    void SelectSubComponent(HitRecord* hitRec, BOOL selected, BOOL all, BOOL invert = FALSE) override;
+    void ClearSelection(int selLevel) override;
+    void SelectAll(int selLevel) override;
+    void InvertSelection(int selLevel) override;
+    int NumSubObjTypes() override;
+    ISubObjType* GetSubObjType(int i) override;
 
     // Modifier
-    ChannelMask ChannelsUsed() override { return GEOM_CHANNEL | TOPO_CHANNEL | SELECT_CHANNEL | TEXMAP_CHANNEL; }
+    ChannelMask ChannelsUsed() override { return GEOM_CHANNEL | TOPO_CHANNEL | SELECT_CHANNEL | TEXMAP_CHANNEL | SUBSEL_TYPE_CHANNEL; }
     ChannelMask ChannelsChanged() override { return GEOM_CHANNEL | TOPO_CHANNEL | TEXMAP_CHANNEL | VERTCOLOR_CHANNEL; }
     Class_ID InputType() override { return triObjectClassID; }
     BOOL ChangeTopology() override { return TRUE; }
     Interval LocalValidity(TimeValue t) override;
     void ModifyObject(TimeValue t, ModContext& mc, ObjectState* os, INode* node) override;
 
+    Matrix3 CompMatrix(TimeValue t, INode* inode, ModContext* mc);
+    void ComputeBorderLineSegments(TimeValue t, Point3 outP0[4], Point3 outP1[4], Point3 outMid[4]) const;
     void UpdateUIControls();
     void SavePresetINI(const MCHAR* path, TimeValue t);
     void LoadPresetINI(const MCHAR* path, TimeValue t);

@@ -15,8 +15,10 @@
 #define IDS_ROL_UPDATE              16
 #define IDS_ROL_PRESETS             17
 #define IDS_ROL_CREDITS             18
+#define IDS_ROL_BORDER              19
+#define IDS_SUB_BORDER_LINES        20
 
-// Dialog IDs (9 Collapsible Rollouts)
+// Dialog IDs (10 Collapsible Rollouts)
 #define IDD_PANEL_PATTERN           101
 #define IDD_PANEL_BOARDSIZE         102
 #define IDD_PANEL_VARIATION         103
@@ -26,6 +28,7 @@
 #define IDD_PANEL_UPDATE            107
 #define IDD_PANEL_PRESETS           108
 #define IDD_PANEL_CREDITS           109
+#define IDD_PANEL_BORDER            110
 
 // Pattern controls
 #define IDC_PAT_COMBO               1001
@@ -155,3 +158,23 @@
 
 // Credits controls
 #define IDC_CREDITS_LINK            1801
+
+// Border controls
+#define IDC_DO_BORDER               1901
+#define IDC_BORDER_WIDTH_EDIT       1902
+#define IDC_BORDER_WIDTH_SPIN       1903
+#define IDC_BORDER_OFFSET_EDIT      1904
+#define IDC_BORDER_OFFSET_SPIN      1905
+#define IDC_BORDER_CUT_COMBO        1906
+#define IDC_BORDER_MATID_EDIT       1907
+#define IDC_BORDER_MATID_SPIN       1908
+#define IDC_BORDER_EDIT_LINES       1909
+#define IDC_BORDER_OFF_BOT_EDIT     1910
+#define IDC_BORDER_OFF_BOT_SPIN     1911
+#define IDC_BORDER_OFF_TOP_EDIT     1912
+#define IDC_BORDER_OFF_TOP_SPIN     1913
+#define IDC_BORDER_OFF_LEFT_EDIT    1914
+#define IDC_BORDER_OFF_LEFT_SPIN    1915
+#define IDC_BORDER_OFF_RIGHT_EDIT   1916
+#define IDC_BORDER_OFF_RIGHT_SPIN   1917
+#define IDC_BORDER_RESET            1918

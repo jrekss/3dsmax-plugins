@@ -1,19 +1,48 @@
 ﻿/*
 ================================================================================
-    FloorGenerator v2.10 (MaxScript Edition)
+    FloorGenerator v2.1 (MaxScript Edition)
     Reconstructed from FloorGenerator_max2027_64bit.dlm
 ================================================================================
     HOW TO USE:
     1. In 3ds Max: Scripting -> Run Script... -> select "FloorGenerator_v2.ms"
        (or drag-and-drop into viewport).
-    2. It registers the "FloorGenerator v2" modifier in the Modifier List with
-       the exact 1:1 original multi-rollout UI (collapsible tabs + compact [L]
-       lock buttons).
+    2. It registers the "FloorGenerator v2.1" modifier in the Modifier List with
+       the exact 1:1 multi-rollout UI (collapsible tabs, Border rollout, and
+       compact [L] lock buttons).
 ================================================================================
 */
 
 global FGv2_Engine
 try (if FGv2_Floater != undefined do (closeRolloutFloater FGv2_Floater; FGv2_Floater = undefined)) catch ()
+
+struct FGv2_BorderCtx
+(
+    active = false,
+    hasValidFrame = false,
+    isRectRoom = true,
+    roomMinX = 0.0,
+    roomMinY = 0.0,
+    roomMaxX = 0.0,
+    roomMaxY = 0.0,
+    roomTris = #(),
+    xOutMin = 0.0,
+    yOutMin = 0.0,
+    xOutMax = 0.0,
+    yOutMax = 0.0,
+    xInMin = 0.0,
+    yInMin = 0.0,
+    xInMax = 0.0,
+    yInMax = 0.0,
+    inFieldMinX = 0.0,
+    inFieldMinY = 0.0,
+    inFieldMaxX = 0.0,
+    inFieldMaxY = 0.0,
+    hasInnerField = false,
+    outerStrips = #(),
+    ringStrips = #(),
+    dirPreTM = undefined,
+    dirPostTM = undefined
+)
 
 struct FGv2_Config
 (
@@ -51,6 +80,16 @@ struct FGv2_Config
     DoGrout = false,
     GroutDepth = 0.5,
     GroutMatID = 3,
+
+    DoBorder = false,
+    BorderWidth = 100.0,
+    BorderOffset = 200.0,
+    BorderCutMode = 1,
+    BorderMatID = 4,
+    BorderOffBot = 0.0,
+    BorderOffTop = 0.0,
+    BorderOffLeft = 0.0,
+    BorderOffRight = 0.0,
 
     MaxRotation = 0.0,
     Rotation_R = 0.0,
@@ -706,12 +745,100 @@ struct FGv2_EngineStruct
         out
     ),
 
+    fn transformPoly2D poly tm =
+    (
+        if tm == undefined do return poly
+        local out = #()
+        out.count = poly.count
+        for i = 1 to poly.count do
+        (
+            local pt = [poly[i].x, poly[i].y, 0.0] * tm
+            out[i] = [pt.x, pt.y, 0.0]
+        )
+        out
+    ),
+
+    fn clipPolyToFootprint2D poly bbMinX bbMinY bbMaxX bbMaxY isRectangularFootprint baseTris =
+    (
+        if poly.count < 3 do return #()
+        if isRectangularFootprint do
+        (
+            local clipped = this.clipPolyToRect poly bbMinX bbMinY bbMaxX bbMaxY
+            if clipped.count >= 3 then return #(clipped) else return #()
+        )
+
+        local pMinX = 1e30, pMinY = 1e30, pMaxX = -1e30, pMaxY = -1e30
+        for p in poly do
+        (
+            if p.x < pMinX do pMinX = p.x
+            if p.y < pMinY do pMinY = p.y
+            if p.x > pMaxX do pMaxX = p.x
+            if p.y > pMaxY do pMaxY = p.y
+        )
+        if pMaxX <= bbMinX or pMinX >= bbMaxX or pMaxY <= bbMinY or pMinY >= bbMaxY do return #()
+
+        local pieces = #()
+        local clippedArea = 0.0
+        for tri in baseTris do
+        (
+            if pMaxX > tri[4] and pMinX < tri[6] and pMaxY > tri[5] and pMinY < tri[7] do
+            (
+                local clipped = this.clipPolyToTri poly tri[1] tri[2] tri[3]
+                if clipped.count >= 3 do
+                (
+                    append pieces clipped
+                    clippedArea += this.polyArea2D clipped
+                )
+            )
+        )
+        if pieces.count == 0 do return #()
+
+        local fullArea = this.polyArea2D poly
+        if abs (clippedArea - fullArea) <= (1e-4 * fullArea) then return #(poly)
+        else if pieces.count > 1 then
+        (
+            local merged = this.mergeClippedPieces pieces
+            if merged.count > 0 do return merged
+        )
+        pieces
+    ),
+
+    fn clipPolyAgainstRectListAndEmit polyRoom rects bctx \
+        boardCenter totalRotDeg uvSpanL uvSpanW bFlipU bFlipV bOffU bOffV \
+        cfg extrudeH bevelH outlineW bTiltDir bTiltAmt dirPostTM matID \
+        outVerts outFaces outTVerts outMatIDs outSmGroups outEdgeVis =
+    (
+        if rects.count == 0 do return false
+        local collected = #()
+        for r in rects do
+        (
+            local sub = this.clipPolyToRect polyRoom r[1] r[2] r[3] r[4]
+            if sub.count >= 3 do
+            (
+                local roomClipped = this.clipPolyToFootprint2D sub bctx.roomMinX bctx.roomMinY bctx.roomMaxX bctx.roomMaxY bctx.isRectRoom bctx.roomTris
+                for rp in roomClipped do append collected rp
+            )
+        )
+        if collected.count == 0 do return false
+        if collected.count > 1 do
+            collected = this.mergeClippedPieces collected
+
+        for fpRoom in collected do
+        (
+            local fpTile = if bctx.dirPreTM != undefined then (this.transformPoly2D fpRoom bctx.dirPreTM) else fpRoom
+            this.emitBoardPrism fpTile boardCenter totalRotDeg uvSpanL uvSpanW bFlipU bFlipV bOffU bOffV \
+                cfg.DoExtrude extrudeH cfg.DoBevel bevelH outlineW bTiltDir bTiltAmt dirPostTM \
+                matID outVerts outFaces outTVerts outMatIDs outSmGroups outEdgeVis
+        )
+        true
+    ),
+
     fn processBoardPoly rawPoly baseRotDeg curBoardL curBoardW \
         bbMinX bbMinY bbMaxX bbMaxY isRectangularFootprint baseTris \
         cfg sc maxL maxW uvSpanL uvSpanW availGapW availGapL \
         clampOffXMin clampOffXMax offXSpr clampOffYMin clampOffYMax offYSpr \
         minTilt maxTilt tiltSpr extrudeH bevelH outlineW dirPostTM \
-        &boardIdx outVerts outFaces outTVerts outMatIDs outSmGroups outEdgeVis fixedMatID:0 =
+        &boardIdx outVerts outFaces outTVerts outMatIDs outSmGroups outEdgeVis bctx:undefined fixedMatID:0 =
     (
         boardIdx += 1
         local dxOff = (this.spreadRand clampOffXMin clampOffXMax (1.0 - offXSpr)) * (this.randSign())
@@ -752,73 +879,76 @@ struct FGv2_EngineStruct
 
         local matID = if fixedMatID > 0 then (fixedMatID as integer) else (((mod (boardIdx - 1) 65535) + 1) as integer)
 
-        if isRectangularFootprint then
+        if bctx != undefined and bctx.active and bctx.hasValidFrame do
         (
-            local clipped = this.clipPolyToRect polyRot bbMinX bbMinY bbMaxX bbMaxY
-            if clipped.count >= 3 do
-            (
-                this.emitBoardPrism clipped center totalRotDeg uvSpanL uvSpanW bFlipU bFlipV bOffU bOffV \
-                    cfg.DoExtrude extrudeH cfg.DoBevel bevelH outlineW bTiltDir bTiltAmt dirPostTM \
-                    matID outVerts outFaces outTVerts outMatIDs outSmGroups outEdgeVis
-            )
-        )
-        else
-        (
-            local pMinX = 1e30, pMinY = 1e30, pMaxX = -1e30, pMaxY = -1e30
-            for p in polyRot do
-            (
-                if p.x < pMinX do pMinX = p.x
-                if p.y < pMinY do pMinY = p.y
-                if p.x > pMaxX do pMaxX = p.x
-                if p.y > pMaxY do pMaxY = p.y
-            )
-            if pMaxX > bbMinX and pMinX < bbMaxX and pMaxY > bbMinY and pMinY < bbMaxY do
-            (
-                local pieces = #()
-                local clippedArea = 0.0
+            local polyRoom = if bctx.dirPostTM != undefined then (this.transformPoly2D polyRot bctx.dirPostTM) else polyRot
 
-                for tri in baseTris do
+            if bctx.hasInnerField do
+            (
+                local inSub = this.clipPolyToRect polyRoom bctx.inFieldMinX bctx.inFieldMinY bctx.inFieldMaxX bctx.inFieldMaxY
+                if inSub.count >= 3 do
                 (
-                    if pMaxX > tri[4] and pMinX < tri[6] and pMaxY > tri[5] and pMinY < tri[7] do
+                    local finalPolys = this.clipPolyToFootprint2D inSub bctx.roomMinX bctx.roomMinY bctx.roomMaxX bctx.roomMaxY bctx.isRectRoom bctx.roomTris
+                    for fpRoom in finalPolys do
                     (
-                        local clipped = this.clipPolyToTri polyRot tri[1] tri[2] tri[3]
-                        if clipped.count >= 3 do
-                        (
-                            append pieces clipped
-                            clippedArea += this.polyArea2D clipped
-                        )
-                    )
-                )
-
-                if pieces.count > 0 do
-                (
-                    local fullBoardArea = this.polyArea2D polyRot
-                    local finalPolys = #()
-
-                    if abs (clippedArea - fullBoardArea) <= (1e-4 * fullBoardArea) then
-                    (
-                        finalPolys = #(polyRot)
-                    )
-                    else if pieces.count > 1 then
-                    (
-                        finalPolys = this.mergeClippedPieces pieces
-                    )
-                    else
-                    (
-                        finalPolys = pieces
-                    )
-
-                    if finalPolys.count == 0 and pieces.count > 0 do finalPolys = pieces
-
-                    for fp in finalPolys do
-                    (
-                        this.emitBoardPrism fp center totalRotDeg uvSpanL uvSpanW bFlipU bFlipV bOffU bOffV \
+                        local fpTile = if bctx.dirPreTM != undefined then (this.transformPoly2D fpRoom bctx.dirPreTM) else fpRoom
+                        this.emitBoardPrism fpTile center totalRotDeg uvSpanL uvSpanW bFlipU bFlipV bOffU bOffV \
                             cfg.DoExtrude extrudeH cfg.DoBevel bevelH outlineW bTiltDir bTiltAmt dirPostTM \
                             matID outVerts outFaces outTVerts outMatIDs outSmGroups outEdgeVis
                     )
                 )
             )
+
+            this.clipPolyAgainstRectListAndEmit polyRoom bctx.outerStrips bctx \
+                center totalRotDeg uvSpanL uvSpanW bFlipU bFlipV bOffU bOffV \
+                cfg extrudeH bevelH outlineW bTiltDir bTiltAmt dirPostTM matID \
+                outVerts outFaces outTVerts outMatIDs outSmGroups outEdgeVis
+
+            if cfg.BorderCutMode == 2 do
+            (
+                local bMatID = amax 1 (cfg.BorderMatID as integer)
+                this.clipPolyAgainstRectListAndEmit polyRoom bctx.ringStrips bctx \
+                    center totalRotDeg uvSpanL uvSpanW bFlipU bFlipV bOffU bOffV \
+                    cfg extrudeH bevelH outlineW bTiltDir bTiltAmt dirPostTM bMatID \
+                    outVerts outFaces outTVerts outMatIDs outSmGroups outEdgeVis
+            )
+            return true
         )
+
+        local finalPolys = this.clipPolyToFootprint2D polyRot bbMinX bbMinY bbMaxX bbMaxY isRectangularFootprint baseTris
+        for fp in finalPolys do
+        (
+            this.emitBoardPrism fp center totalRotDeg uvSpanL uvSpanW bFlipU bFlipV bOffU bOffV \
+                cfg.DoExtrude extrudeH cfg.DoBevel bevelH outlineW bTiltDir bTiltAmt dirPostTM \
+                matID outVerts outFaces outTVerts outMatIDs outSmGroups outEdgeVis
+        )
+    ),
+
+    fn buildTrisFromMesh ioMesh verts2D =
+    (
+        local tris = #()
+        local areaSum = 0.0
+        for f = 1 to ioMesh.numFaces do
+        (
+            local fv = getFace ioMesh f
+            local p1 = verts2D[fv.x]
+            local p2 = verts2D[fv.y]
+            local p3 = verts2D[fv.z]
+            local a2 = (p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x)
+            if abs a2 > 1e-5 do
+            (
+                areaSum += 0.5 * (abs a2)
+                local tMinX = amin p1.x (amin p2.x p3.x)
+                local tMinY = amin p1.y (amin p2.y p3.y)
+                local tMaxX = amax p1.x (amax p2.x p3.x)
+                local tMaxY = amax p1.y (amax p2.y p3.y)
+                if a2 > 0.0 then
+                    append tris #(p1, p2, p3, tMinX, tMinY, tMaxX, tMaxY)
+                else
+                    append tris #(p1, p3, p2, tMinX, tMinY, tMaxX, tMaxY)
+            )
+        )
+        #(tris, areaSum)
     ),
 
     -- 6. Main Floor Mesh Builder (FUN_180007010 ModifyObject)
@@ -869,15 +999,24 @@ struct FGv2_EngineStruct
 
         -- Transform base mesh vertices to 2D plane (z = 0)
         local numBaseVerts = ioMesh.numVerts
+        local roomVerts2D = #()
+        roomVerts2D.count = numBaseVerts
         local baseVerts2D = #()
         baseVerts2D.count = numBaseVerts
+        local roomMinX = 1e30, roomMinY = 1e30, roomMaxX = -1e30, roomMaxY = -1e30
         local bbMinX = 1e30, bbMinY = 1e30, bbMaxX = -1e30, bbMaxY = -1e30
 
         for v = 1 to numBaseVerts do
         (
-            local p = (getVert ioMesh v) * toPlaneTM
-            p.z = 0.0
-            if dirPreTM != undefined do p = p * dirPreTM
+            local pRoom = (getVert ioMesh v) * toPlaneTM
+            pRoom.z = 0.0
+            roomVerts2D[v] = pRoom
+            if pRoom.x < roomMinX do roomMinX = pRoom.x
+            if pRoom.y < roomMinY do roomMinY = pRoom.y
+            if pRoom.x > roomMaxX do roomMaxX = pRoom.x
+            if pRoom.y > roomMaxY do roomMaxY = pRoom.y
+
+            local p = if dirPreTM != undefined then (pRoom * dirPreTM) else pRoom
             baseVerts2D[v] = p
             if p.x < bbMinX do bbMinX = p.x
             if p.y < bbMinY do bbMinY = p.y
@@ -887,33 +1026,21 @@ struct FGv2_EngineStruct
 
         local bbSpanX = bbMaxX - bbMinX
         local bbSpanY = bbMaxY - bbMinY
-        if bbSpanX <= 1e-4 or bbSpanY <= 1e-4 do return false
+        local roomSpanX = roomMaxX - roomMinX
+        local roomSpanY = roomMaxY - roomMinY
+        if bbSpanX <= 1e-4 or bbSpanY <= 1e-4 or roomSpanX <= 1e-4 or roomSpanY <= 1e-4 do return false
 
-        local baseTris = #()
-        local totalTriArea = 0.0
-        for f = 1 to ioMesh.numFaces do
-        (
-            local fv = getFace ioMesh f
-            local p1 = baseVerts2D[fv.x]
-            local p2 = baseVerts2D[fv.y]
-            local p3 = baseVerts2D[fv.z]
-            local a2 = (p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x)
-            if abs a2 > 1e-5 do
-            (
-                totalTriArea += 0.5 * (abs a2)
-                local tMinX = amin p1.x (amin p2.x p3.x)
-                local tMinY = amin p1.y (amin p2.y p3.y)
-                local tMaxX = amax p1.x (amax p2.x p3.x)
-                local tMaxY = amax p1.y (amax p2.y p3.y)
-                if a2 > 0.0 then
-                    append baseTris #(p1, p2, p3, tMinX, tMinY, tMaxX, tMaxY)
-                else
-                    append baseTris #(p1, p3, p2, tMinX, tMinY, tMaxX, tMaxY)
-            )
-        )
-
+        local btBase = this.buildTrisFromMesh ioMesh baseVerts2D
+        local baseTris = btBase[1]
+        local totalTriArea = btBase[2]
         local bboxArea = bbSpanX * bbSpanY
         local isRectangularFootprint = (abs (totalTriArea - bboxArea) <= (1e-4 * bboxArea))
+
+        local btRoom = if dirPreTM != undefined then (this.buildTrisFromMesh ioMesh roomVerts2D) else btBase
+        local roomTris = btRoom[1]
+        local roomArea = btRoom[2]
+        local roomBboxArea = roomSpanX * roomSpanY
+        local isRectRoom = (abs (roomArea - roomBboxArea) <= (1e-4 * roomBboxArea))
 
         -- 4. Resolve scaled parameters & check WarnMaxBoard
         local sc = amax 0.0001 (cfg.Scale * 0.01)
@@ -1000,6 +1127,65 @@ struct FGv2_EngineStruct
         local outEdgeVis  = #()
         local boardIdx    = 0
 
+        local bctx = FGv2_BorderCtx \
+            active:cfg.DoBorder \
+            isRectRoom:isRectRoom \
+            roomMinX:roomMinX roomMinY:roomMinY roomMaxX:roomMaxX roomMaxY:roomMaxY \
+            roomTris:roomTris dirPreTM:dirPreTM dirPostTM:dirPostTM
+
+        if bctx.active do
+        (
+            local bOff = cfg.BorderOffset * sc
+            local bW = amax (0.1 * sc) (cfg.BorderWidth * sc)
+            local x0 = roomMinX + bOff + cfg.BorderOffLeft * sc
+            local x1 = roomMaxX - bOff + cfg.BorderOffRight * sc
+            local y0 = roomMinY + bOff + cfg.BorderOffBot * sc
+            local y1 = roomMaxY - bOff + cfg.BorderOffTop * sc
+
+            bctx.xOutMin = amin x0 x1
+            bctx.xOutMax = amax x0 x1
+            bctx.yOutMin = amin y0 y1
+            bctx.yOutMax = amax y0 y1
+            local frameW = bctx.xOutMax - bctx.xOutMin
+            local frameH = bctx.yOutMax - bctx.yOutMin
+            bctx.hasValidFrame = (frameW > 1e-3 and frameH > 1e-3)
+
+            if bctx.hasValidFrame do
+            (
+                local effW = amin bW (0.49 * (amin frameW frameH))
+                bctx.xInMin = bctx.xOutMin + effW
+                bctx.xInMax = bctx.xOutMax - effW
+                bctx.yInMin = bctx.yOutMin + effW
+                bctx.yInMax = bctx.yOutMax - effW
+
+                bctx.inFieldMinX = bctx.xInMin + gapL
+                bctx.inFieldMaxX = bctx.xInMax - gapL
+                bctx.inFieldMinY = bctx.yInMin + gapW
+                bctx.inFieldMaxY = bctx.yInMax - gapW
+                bctx.hasInnerField = (bctx.inFieldMaxX > bctx.inFieldMinX + 1e-3) and (bctx.inFieldMaxY > bctx.inFieldMinY + 1e-3)
+
+                local blkMinX = bctx.xOutMin - gapL
+                local blkMaxX = bctx.xOutMax + gapL
+                local blkMinY = bctx.yOutMin - gapW
+                local blkMaxY = bctx.yOutMax + gapW
+
+                local cxMin = amax roomMinX blkMinX
+                local cxMax = amin roomMaxX blkMaxX
+                if (amin roomMaxX blkMinX) > roomMinX + 1e-4 do append bctx.outerStrips #(roomMinX, roomMinY, amin roomMaxX blkMinX, roomMaxY)
+                if roomMaxX > (amax roomMinX blkMaxX) + 1e-4 do append bctx.outerStrips #(amax roomMinX blkMaxX, roomMinY, roomMaxX, roomMaxY)
+                if cxMax > cxMin + 1e-4 do
+                (
+                    if (amin roomMaxY blkMinY) > roomMinY + 1e-4 do append bctx.outerStrips #(cxMin, roomMinY, cxMax, amin roomMaxY blkMinY)
+                    if roomMaxY > (amax roomMinY blkMaxY) + 1e-4 do append bctx.outerStrips #(cxMin, amax roomMinY blkMaxY, cxMax, roomMaxY)
+                )
+
+                if bctx.xOutMax > bctx.xOutMin + 1e-4 and bctx.yInMin > bctx.yOutMin + 1e-4 do append bctx.ringStrips #(bctx.xOutMin, bctx.yOutMin, bctx.xOutMax, bctx.yInMin)
+                if bctx.xOutMax > bctx.xOutMin + 1e-4 and bctx.yOutMax > bctx.yInMax + 1e-4 do append bctx.ringStrips #(bctx.xOutMin, bctx.yInMax, bctx.xOutMax, bctx.yOutMax)
+                if bctx.xInMin > bctx.xOutMin + 1e-4 and bctx.yInMax > bctx.yInMin + 1e-4 do append bctx.ringStrips #(bctx.xOutMin, bctx.yInMin, bctx.xInMin, bctx.yInMax)
+                if bctx.xOutMax > bctx.xInMax + 1e-4 and bctx.yInMax > bctx.yInMin + 1e-4 do append bctx.ringStrips #(bctx.xInMax, bctx.yInMin, bctx.xOutMax, bctx.yInMax)
+            )
+        )
+
         -- 5. Generate Pattern Boards
         local pat = cfg.FloorPattern
         local offObjX = cfg.ObjOffsetX * sc
@@ -1040,7 +1226,7 @@ struct FGv2_EngineStruct
                         cfg sc maxL maxW uvSpanL uvSpanW availGapW availGapL \
                         clampOffXMin clampOffXMax offXSpr clampOffYMin clampOffYMax offYSpr \
                         minTilt maxTilt tiltSpr extrudeH bevelH outlineW dirPostTM \
-                        &boardIdx outVerts outFaces outTVerts outMatIDs outSmGroups outEdgeVis
+                        &boardIdx outVerts outFaces outTVerts outMatIDs outSmGroups outEdgeVis bctx:bctx
 
                     xCursor += curL + gapL
                 )
@@ -1104,7 +1290,7 @@ struct FGv2_EngineStruct
                             cfg sc maxL maxW uvSpanL uvSpanW availGapW availGapL \
                             clampOffXMin clampOffXMax offXSpr clampOffYMin clampOffYMax offYSpr \
                             minTilt maxTilt tiltSpr extrudeH bevelH outlineW dirPostTM \
-                            &boardIdx outVerts outFaces outTVerts outMatIDs outSmGroups outEdgeVis
+                            &boardIdx outVerts outFaces outTVerts outMatIDs outSmGroups outEdgeVis bctx:bctx
                     )
                     colIdx += 1
                     xCursor += colStepX
@@ -1164,7 +1350,7 @@ struct FGv2_EngineStruct
                         cfg sc maxL maxW uvSpanL uvSpanW availGapW availGapL \
                         clampOffXMin clampOffXMax offXSpr clampOffYMin clampOffYMax offYSpr \
                         minTilt maxTilt tiltSpr extrudeH bevelH outlineW dirPostTM \
-                        &boardIdx outVerts outFaces outTVerts outMatIDs outSmGroups outEdgeVis
+                        &boardIdx outVerts outFaces outTVerts outMatIDs outSmGroups outEdgeVis bctx:bctx
 
                     colIdx += 1
                     xCursor += stepX
@@ -1224,7 +1410,7 @@ struct FGv2_EngineStruct
                             cfg sc maxL subW uvSpanL uvSpanW availGapW availGapL \
                             clampOffXMin clampOffXMax offXSpr clampOffYMin clampOffYMax offYSpr \
                             minTilt maxTilt tiltSpr extrudeH bevelH outlineW dirPostTM \
-                            &boardIdx outVerts outFaces outTVerts outMatIDs outSmGroups outEdgeVis
+                            &boardIdx outVerts outFaces outTVerts outMatIDs outSmGroups outEdgeVis bctx:bctx
                     )
                     colIdx += 1
                     xCursor += blockStep
@@ -1268,7 +1454,7 @@ struct FGv2_EngineStruct
                         cfg sc (rad * 2.0) (rad * 2.0) uvSpanL uvSpanW availGapW availGapL \
                         clampOffXMin clampOffXMax offXSpr clampOffYMin clampOffYMax offYSpr \
                         minTilt maxTilt tiltSpr extrudeH bevelH outlineW dirPostTM \
-                        &boardIdx outVerts outFaces outTVerts outMatIDs outSmGroups outEdgeVis
+                        &boardIdx outVerts outFaces outTVerts outMatIDs outSmGroups outEdgeVis bctx:bctx
 
                     xCursor += stepX
                 )
@@ -1315,7 +1501,7 @@ struct FGv2_EngineStruct
                         cfg sc side triH uvSpanL uvSpanW availGapW availGapL \
                         clampOffXMin clampOffXMax offXSpr clampOffYMin clampOffYMax offYSpr \
                         minTilt maxTilt tiltSpr extrudeH bevelH outlineW dirPostTM \
-                        &boardIdx outVerts outFaces outTVerts outMatIDs outSmGroups outEdgeVis
+                        &boardIdx outVerts outFaces outTVerts outMatIDs outSmGroups outEdgeVis bctx:bctx
 
                     -- 2. Down-pointing triangle (shifted up by 0.5*gapL so all 60-deg edges align across rows)
                     local cxDn = cxUp + halfStepX
@@ -1329,7 +1515,7 @@ struct FGv2_EngineStruct
                         cfg sc side triH uvSpanL uvSpanW availGapW availGapL \
                         clampOffXMin clampOffXMax offXSpr clampOffYMin clampOffYMax offYSpr \
                         minTilt maxTilt tiltSpr extrudeH bevelH outlineW dirPostTM \
-                        &boardIdx outVerts outFaces outTVerts outMatIDs outSmGroups outEdgeVis
+                        &boardIdx outVerts outFaces outTVerts outMatIDs outSmGroups outEdgeVis bctx:bctx
 
                     xCursor += stepX
                 )
@@ -1395,7 +1581,7 @@ struct FGv2_EngineStruct
                         cfg sc tileL tileW tileL tileW availGapW availGapL \
                         clampOffXMin clampOffXMax offXSpr clampOffYMin clampOffYMax offYSpr \
                         minTilt maxTilt tiltSpr extrudeH bevelH outlineW dirPostTM \
-                        &boardIdx outVerts outFaces outTVerts outMatIDs outSmGroups outEdgeVis fixedMatID:1
+                        &boardIdx outVerts outFaces outTVerts outMatIDs outSmGroups outEdgeVis bctx:bctx fixedMatID:1
 
                     -- 2. Diamond Insert at top-right corner intersection (MatID = 2)
                     if insHalfDiag > 1e-4 do
@@ -1413,12 +1599,47 @@ struct FGv2_EngineStruct
                             cfg sc insSide insSide insSide insSide availGapW availGapL \
                             clampOffXMin clampOffXMax offXSpr clampOffYMin clampOffYMax offYSpr \
                             minTilt maxTilt tiltSpr extrudeH bevelH outlineW dirPostTM \
-                            &boardIdx outVerts outFaces outTVerts outMatIDs outSmGroups outEdgeVis fixedMatID:2
+                            &boardIdx outVerts outFaces outTVerts outMatIDs outSmGroups outEdgeVis bctx:bctx fixedMatID:2
                     )
 
                     xCursor += stepX
                 )
                 yCursor += stepY
+            )
+        )
+
+        -- 5a. Border Miter 45 mode
+        if bctx.active and bctx.hasValidFrame and cfg.BorderCutMode == 1 do
+        (
+            local inW = bctx.xInMax - bctx.xInMin
+            local inH = bctx.yInMax - bctx.yInMin
+            local maxD45 = 0.45 * (amin inW inH)
+            local d45 = amin maxD45 (0.70710678 * gapL)
+            local bMatID = amax 1 (cfg.BorderMatID as integer)
+
+            local strips = #(
+                #(#([bctx.xOutMin + d45, bctx.yOutMin, 0.0], [bctx.xOutMax - d45, bctx.yOutMin, 0.0], [bctx.xInMax - d45, bctx.yInMin, 0.0], [bctx.xInMin + d45, bctx.yInMin, 0.0]), 0.0),
+                #(#([bctx.xInMin + d45, bctx.yInMax, 0.0], [bctx.xInMax - d45, bctx.yInMax, 0.0], [bctx.xOutMax - d45, bctx.yOutMax, 0.0], [bctx.xOutMin + d45, bctx.yOutMax, 0.0]), 0.0),
+                #(#([bctx.xOutMin, bctx.yOutMin + d45, 0.0], [bctx.xInMin, bctx.yInMin + d45, 0.0], [bctx.xInMin, bctx.yInMax - d45, 0.0], [bctx.xOutMin, bctx.yOutMax - d45, 0.0]), 90.0),
+                #(#([bctx.xInMax, bctx.yInMin + d45, 0.0], [bctx.xOutMax, bctx.yOutMin + d45, 0.0], [bctx.xOutMax, bctx.yOutMax - d45, 0.0], [bctx.xInMax, bctx.yInMax - d45, 0.0]), 90.0)
+            )
+            for st in strips do
+            (
+                local clippedStrips = this.clipPolyToFootprint2D st[1] bctx.roomMinX bctx.roomMinY bctx.roomMaxX bctx.roomMaxY bctx.isRectRoom bctx.roomTris
+                for fp in clippedStrips do
+                (
+                    local cx = 0.0, cy = 0.0
+                    for p in fp do (cx += p.x; cy += p.y)
+                    cx /= (fp.count as float)
+                    cy /= (fp.count as float)
+                    local sFlipU = if cfg.FlipU then ((random 0 1) == 1) else false
+                    local sFlipV = if cfg.FlipV then ((random 0 1) == 1) else false
+                    local sOffU  = if cfg.RandomOffsetU then (random -0.5 0.5) else 0.0
+                    local sOffV  = if cfg.RandomOffsetV then (random -0.5 0.5) else 0.0
+                    this.emitBoardPrism fp [cx, cy, 0.0] st[2] uvSpanL uvSpanW sFlipU sFlipV sOffU sOffV \
+                        cfg.DoExtrude extrudeH cfg.DoBevel bevelH outlineW 0.0 0.0 undefined \
+                        bMatID outVerts outFaces outTVerts outMatIDs outSmGroups outEdgeVis
+                )
             )
         )
 
@@ -1587,6 +1808,16 @@ struct FGv2_EngineStruct
         setINISetting filePath sec "GroutDepth" (cfg.GroutDepth as string)
         setINISetting filePath sec "GroutMatID" (cfg.GroutMatID as string)
 
+        setINISetting filePath sec "DoBorder" (if cfg.DoBorder then "1" else "0")
+        setINISetting filePath sec "BorderWidth" (cfg.BorderWidth as string)
+        setINISetting filePath sec "BorderOffset" (cfg.BorderOffset as string)
+        setINISetting filePath sec "BorderCutMode" (cfg.BorderCutMode as string)
+        setINISetting filePath sec "BorderMatID" (cfg.BorderMatID as string)
+        setINISetting filePath sec "BorderOffBot" (cfg.BorderOffBot as string)
+        setINISetting filePath sec "BorderOffTop" (cfg.BorderOffTop as string)
+        setINISetting filePath sec "BorderOffLeft" (cfg.BorderOffLeft as string)
+        setINISetting filePath sec "BorderOffRight" (cfg.BorderOffRight as string)
+
         setINISetting filePath sec "MaxRotation" ((cfg.MaxRotation * 0.01) as string)
         setINISetting filePath sec "Rotation_R" ((cfg.Rotation_R * 0.01) as string)
         setINISetting filePath sec "RotationSpread" (cfg.RotationSpread as string)
@@ -1672,6 +1903,16 @@ struct FGv2_EngineStruct
         cfg.GroutDepth = this.readIniFloat filePath sec "GroutDepth" cfg.GroutDepth
         cfg.GroutMatID = this.readIniInt filePath sec "GroutMatID" cfg.GroutMatID
 
+        cfg.DoBorder       = this.readIniBool filePath sec "DoBorder" cfg.DoBorder
+        cfg.BorderWidth    = this.readIniFloat filePath sec "BorderWidth" cfg.BorderWidth
+        cfg.BorderOffset   = this.readIniFloat filePath sec "BorderOffset" cfg.BorderOffset
+        cfg.BorderCutMode  = amax 1 (amin 2 (this.readIniInt filePath sec "BorderCutMode" cfg.BorderCutMode))
+        cfg.BorderMatID    = this.readIniInt filePath sec "BorderMatID" cfg.BorderMatID
+        cfg.BorderOffBot   = this.readIniFloat filePath sec "BorderOffBot" cfg.BorderOffBot
+        cfg.BorderOffTop   = this.readIniFloat filePath sec "BorderOffTop" cfg.BorderOffTop
+        cfg.BorderOffLeft  = this.readIniFloat filePath sec "BorderOffLeft" cfg.BorderOffLeft
+        cfg.BorderOffRight = this.readIniFloat filePath sec "BorderOffRight" cfg.BorderOffRight
+
         cfg.MaxRotation    = (this.readIniFloat filePath sec "MaxRotation" (cfg.MaxRotation * 0.01)) * 100.0
         cfg.Rotation_R     = (this.readIniFloat filePath sec "Rotation_R" (cfg.Rotation_R * 0.01)) * 100.0
         cfg.RotationSpread = this.readIniFloat filePath sec "RotationSpread" cfg.RotationSpread
@@ -1715,9 +1956,9 @@ FGv2_Engine = FGv2_EngineStruct()
 --         1:1 Original Multi-Rollout UI with Collapsible Tabs & [L] Buttons
 -- =============================================================================
 plugin simpleMeshMod FloorGenerator_v2
-    name:"FloorGenerator v2"
+    name:"FloorGenerator v2.1"
     classID:#(0x46477632, 0x20270002)
-    version:2
+    version:3
 (
     local cachedMesh = undefined
     local forceRefresh = false
@@ -1790,6 +2031,22 @@ plugin simpleMeshMod FloorGenerator_v2
         on GroutLength set val do (if Grout_L do GroutWidth = val)
         on MinRowOffset set val do (if RowOffset_L do MaxRowOffset = val)
         on Bevel set val do (if BevelL do Outline = val)
+    )
+
+    parameters pBorder rollout:rolFG_Border
+    (
+        DoBorder       type:#boolean    default:false animatable:false ui:chkDoBorder
+        BorderWidth    type:#worldUnits default:100.0 animatable:true  ui:spnBorderWidth
+        BorderOffset   type:#worldUnits default:200.0 animatable:true  ui:spnBorderOffset
+        BorderCutMode  type:#integer    default:1     animatable:false ui:ddBorderCut
+        BorderMatID    type:#integer    default:4     animatable:false ui:spnBorderMatID
+        BorderOffBot   type:#worldUnits default:0.0   animatable:true  ui:spnBorderOffBot
+        BorderOffTop   type:#worldUnits default:0.0   animatable:true  ui:spnBorderOffTop
+        BorderOffLeft  type:#worldUnits default:0.0   animatable:true  ui:spnBorderOffLeft
+        BorderOffRight type:#worldUnits default:0.0   animatable:true  ui:spnBorderOffRight
+
+        on DoBorder set val do this.refreshAllRollouts()
+        on BorderCutMode set val do this.refreshAllRollouts()
     )
 
     parameters pVariation rollout:rolFG_Variation
@@ -1865,6 +2122,8 @@ plugin simpleMeshMod FloorGenerator_v2
             MinRowOffset:MinRowOffset MaxRowOffset:MaxRowOffset RowOffset_L:RowOffset_L \
             DoExtrude:DoExtrude Extrude:Extrude DoBevel:DoBevel Bevel:Bevel BevelL:BevelL Outline:Outline \
             DoGrout:DoGrout GroutDepth:GroutDepth GroutMatID:GroutMatID \
+            DoBorder:DoBorder BorderWidth:BorderWidth BorderOffset:BorderOffset BorderCutMode:BorderCutMode BorderMatID:BorderMatID \
+            BorderOffBot:BorderOffBot BorderOffTop:BorderOffTop BorderOffLeft:BorderOffLeft BorderOffRight:BorderOffRight \
             MaxRotation:MaxRotation Rotation_R:Rotation_R RotationSpread:RotationSpread \
             Offset_X:Offset_X Offset_X_R:Offset_X_R Offset_X_S:Offset_X_S \
             Offset_Y:Offset_Y Offset_Y_R:Offset_Y_R Offset_Y_S:Offset_Y_S Offset_L:Offset_L \
@@ -1932,6 +2191,21 @@ plugin simpleMeshMod FloorGenerator_v2
             this.rolFG_BoardSize.spnGroutDepth.enabled  = DoGrout
             this.rolFG_BoardSize.spnGroutMatID.enabled  = DoGrout
         )
+        if this.rolFG_Border != undefined and this.rolFG_Border.open do
+        (
+            local bOn = DoBorder
+            this.rolFG_Border.spnBorderWidth.enabled    = bOn
+            this.rolFG_Border.spnBorderOffset.enabled   = bOn
+            this.rolFG_Border.lblBorderCut.enabled      = bOn
+            this.rolFG_Border.ddBorderCut.enabled       = bOn
+            this.rolFG_Border.ddBorderCut.selection     = amin 2 (amax 1 (BorderCutMode as integer))
+            this.rolFG_Border.spnBorderMatID.enabled    = bOn
+            this.rolFG_Border.spnBorderOffBot.enabled   = bOn
+            this.rolFG_Border.spnBorderOffTop.enabled   = bOn
+            this.rolFG_Border.spnBorderOffLeft.enabled  = bOn
+            this.rolFG_Border.spnBorderOffRight.enabled = bOn
+            this.rolFG_Border.btnBorderReset.enabled    = bOn
+        )
         if this.rolFG_Variation != undefined and this.rolFG_Variation.open do
         (
             this.rolFG_Variation.btnLockOffset.state = Offset_L
@@ -1982,6 +2256,15 @@ plugin simpleMeshMod FloorGenerator_v2
         DoGrout = cfg.DoGrout
         GroutDepth = cfg.GroutDepth
         GroutMatID = cfg.GroutMatID
+        DoBorder = cfg.DoBorder
+        BorderWidth = cfg.BorderWidth
+        BorderOffset = cfg.BorderOffset
+        BorderCutMode = cfg.BorderCutMode
+        BorderMatID = cfg.BorderMatID
+        BorderOffBot = cfg.BorderOffBot
+        BorderOffTop = cfg.BorderOffTop
+        BorderOffLeft = cfg.BorderOffLeft
+        BorderOffRight = cfg.BorderOffRight
         MaxRotation = cfg.MaxRotation
         Rotation_R = cfg.Rotation_R
         RotationSpread = cfg.RotationSpread
@@ -2094,6 +2377,41 @@ plugin simpleMeshMod FloorGenerator_v2
         (
             BevelL = state
             if state do Outline = Bevel
+            this.refreshAllRollouts()
+        )
+    )
+
+    -- 2b. Rollout: Border
+    rollout rolFG_Border "Border" width:162 rolledUp:true
+    (
+        checkbox chkDoBorder "Border" align:#left offset:[-5, -2] checked:false toolTip:"Add rectangular perimeter frame border around main tile field"
+        spinner spnBorderWidth  "Width "  range:[0.1,1e6,100.0] type:#worldUnits fieldwidth:56 align:#right offset:[-12, 0]
+        spinner spnBorderOffset "Offset " range:[0.0,1e6,200.0] type:#worldUnits fieldwidth:56 align:#right offset:[-12, -2]
+        label lblBorderCut "Corners" align:#left offset:[-5, 3] across:2
+        dropdownList ddBorderCut "" items:#("Miter 45", "Tile Seams") selection:1 width:82 align:#right offset:[6, 0]
+        spinner spnBorderMatID "Border ID " range:[1,65535,4] type:#integer fieldwidth:56 align:#right offset:[-12, 2]
+
+        group "Line Offsets (Sides)"
+        (
+            spinner spnBorderOffBot   "Bottom " range:[-1e6,1e6,0.0] type:#worldUnits fieldwidth:52 align:#right offset:[-4, -2]
+            spinner spnBorderOffTop   "Top "    range:[-1e6,1e6,0.0] type:#worldUnits fieldwidth:52 align:#right offset:[-4, -2]
+            spinner spnBorderOffLeft  "Left "   range:[-1e6,1e6,0.0] type:#worldUnits fieldwidth:52 align:#right offset:[-4, -2]
+            spinner spnBorderOffRight "Right "  range:[-1e6,1e6,0.0] type:#worldUnits fieldwidth:52 align:#right offset:[-4, -2]
+            button btnBorderReset "Reset Lines" width:126 height:18 align:#center offset:[0, 2]
+        )
+
+        on rolFG_Border open do this.refreshAllRollouts()
+        on chkDoBorder changed state do this.refreshAllRollouts()
+        on ddBorderCut selected idx do this.refreshAllRollouts()
+        on btnBorderReset pressed do
+        (
+            undo "Reset Border Lines" on
+            (
+                BorderOffBot = 0.0
+                BorderOffTop = 0.0
+                BorderOffLeft = 0.0
+                BorderOffRight = 0.0
+            )
             this.refreshAllRollouts()
         )
     )
@@ -2213,7 +2531,7 @@ plugin simpleMeshMod FloorGenerator_v2
     -- 9. Rollout: Credits
     rollout rolFG_Credits "Credits" width:162
     (
-        label lblCredits1 "FloorGenerator V2.10" align:#center offset:[0, -2]
+        label lblCredits1 "FloorGenerator V2.1" align:#center offset:[0, -2]
         label lblCredits2 "Created by" align:#center offset:[0, -4]
         hyperLink hlCredits "CG-Source.com" address:"https://www.cg-source.com" color:(color 45 95 225) hoverColor:(color 90 145 255) visitedColor:(color 45 95 225) align:#center offset:[0, -4]
         label lblCredits3 "The source for" align:#center offset:[0, -4]
@@ -2244,4 +2562,4 @@ plugin simpleMeshMod FloorGenerator_v2
     )
 )
 
-format "[FloorGenerator v2.10] Loaded! Modifier 'FloorGenerator v2' registered in Modifier List.\n"
+format "[FloorGenerator v2.1] Loaded! Modifier 'FloorGenerator v2.1' registered in Modifier List.\n"

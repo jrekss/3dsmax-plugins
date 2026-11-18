@@ -103,6 +103,48 @@ BEGIN
     CONTROL         "", IDC_GROUT_MATID_SPIN, "SpinnerControl", 0x0000, 87, 182, 7, 10
 END
 
+IDD_PANEL_BORDER DIALOGEX 0, 0, 108, 152
+STYLE DS_SETFONT | WS_CHILD | WS_VISIBLE
+FONT 8, "MS Shell Dlg"
+BEGIN
+    CONTROL         "Border", IDC_DO_BORDER, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 4, 5, 42, 10
+
+    RTEXT           "Width", IDC_STATIC, 4, 18, 46, 8
+    CONTROL         "", IDC_BORDER_WIDTH_EDIT, "CustEdit", WS_TABSTOP, 53, 17, 34, 10
+    CONTROL         "", IDC_BORDER_WIDTH_SPIN, "SpinnerControl", 0x0000, 87, 17, 7, 10
+
+    RTEXT           "Offset", IDC_STATIC, 4, 29, 46, 8
+    CONTROL         "", IDC_BORDER_OFFSET_EDIT, "CustEdit", WS_TABSTOP, 53, 28, 34, 10
+    CONTROL         "", IDC_BORDER_OFFSET_SPIN, "SpinnerControl", 0x0000, 87, 28, 7, 10
+
+    RTEXT           "Corners", IDC_STATIC, 4, 42, 34, 8
+    COMBOBOX        IDC_BORDER_CUT_COMBO, 41, 40, 61, 60, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+
+    RTEXT           "Border ID", IDC_STATIC, 4, 56, 46, 8
+    CONTROL         "", IDC_BORDER_MATID_EDIT, "CustEdit", WS_TABSTOP, 53, 55, 34, 10
+    CONTROL         "", IDC_BORDER_MATID_SPIN, "SpinnerControl", 0x0000, 87, 55, 7, 10
+
+    CONTROL         "Edit Border Lines", IDC_BORDER_EDIT_LINES, "CustButton", WS_TABSTOP, 6, 70, 96, 13
+
+    RTEXT           "Bottom Off", IDC_STATIC, 4, 88, 46, 8
+    CONTROL         "", IDC_BORDER_OFF_BOT_EDIT, "CustEdit", WS_TABSTOP, 53, 87, 34, 10
+    CONTROL         "", IDC_BORDER_OFF_BOT_SPIN, "SpinnerControl", 0x0000, 87, 87, 7, 10
+
+    RTEXT           "Top Off", IDC_STATIC, 4, 99, 46, 8
+    CONTROL         "", IDC_BORDER_OFF_TOP_EDIT, "CustEdit", WS_TABSTOP, 53, 98, 34, 10
+    CONTROL         "", IDC_BORDER_OFF_TOP_SPIN, "SpinnerControl", 0x0000, 87, 98, 7, 10
+
+    RTEXT           "Left Off", IDC_STATIC, 4, 110, 46, 8
+    CONTROL         "", IDC_BORDER_OFF_LEFT_EDIT, "CustEdit", WS_TABSTOP, 53, 109, 34, 10
+    CONTROL         "", IDC_BORDER_OFF_LEFT_SPIN, "SpinnerControl", 0x0000, 87, 109, 7, 10
+
+    RTEXT           "Right Off", IDC_STATIC, 4, 121, 46, 8
+    CONTROL         "", IDC_BORDER_OFF_RIGHT_EDIT, "CustEdit", WS_TABSTOP, 53, 120, 34, 10
+    CONTROL         "", IDC_BORDER_OFF_RIGHT_SPIN, "SpinnerControl", 0x0000, 87, 120, 7, 10
+
+    PUSHBUTTON      "Reset Lines", IDC_BORDER_RESET, 14, 134, 80, 13
+END
+
 IDD_PANEL_VARIATION DIALOGEX 0, 0, 108, 178
 STYLE DS_SETFONT | WS_CHILD | WS_VISIBLE
 FONT 8, "MS Shell Dlg"
@@ -235,7 +277,7 @@ IDD_PANEL_CREDITS DIALOGEX 0, 0, 108, 48
 STYLE DS_SETFONT | WS_CHILD | WS_VISIBLE
 FONT 8, "MS Shell Dlg"
 BEGIN
-    CTEXT           "FloorGenerator V2.10", IDC_STATIC, 4, 4, 100, 8
+    CTEXT           "FloorGenerator V2.1", IDC_STATIC, 4, 4, 100, 8
     CTEXT           "Created by", IDC_STATIC, 4, 13, 100, 8
     CTEXT           "CG-Source.com", IDC_CREDITS_LINK, 4, 22, 100, 8
     CTEXT           "Extended Pro Edition", IDC_STATIC, 4, 33, 100, 8
@@ -247,12 +289,13 @@ END
 
 STRINGTABLE
 BEGIN
-    IDS_LIBDESCRIPTION      "FloorGenerator v2.10 Pro Modifier"
+    IDS_LIBDESCRIPTION      "FloorGenerator v2.1 Pro Modifier"
     IDS_CATEGORY            "FloorGenerator"
-    IDS_CLASS_NAME          "FloorGenerator v2"
+    IDS_CLASS_NAME          "FloorGenerator v2.1"
     IDS_PARAMS              "Parameters"
     IDS_ROL_PATTERN         "Floor Pattern"
     IDS_ROL_BOARDSIZE       "Board Size"
+    IDS_ROL_BORDER          "Border"
     IDS_ROL_VARIATION       "Variation Per Board"
     IDS_ROL_GENERAL         "General"
     IDS_ROL_UV              "UV Settings"
@@ -260,4 +303,5 @@ BEGIN
     IDS_ROL_UPDATE          "Update"
     IDS_ROL_PRESETS         "Save/Load Presets"
     IDS_ROL_CREDITS         "Credits"
+    IDS_SUB_BORDER_LINES    "Border Lines"
 END
