@@ -71,6 +71,8 @@ namespace
         bool doBorder = false;
         double borderWidth = 100.0;
         double borderOffset = 200.0;
+        int borderPattern = 1; // 1 = Same Pattern, 2 = Standard Tile
+        double borderTileSize = 600.0;
         int borderCutMode = 1; // 1 = Miter 45, 2 = Tile Seams
         int borderMatID = 4;
         double borderOffBot = 0.0;
@@ -284,6 +286,14 @@ namespace
         if (c.size() < 3) return {};
         c = clipPolyByEdge(c, tri.p3, tri.p1);
         return cleanPoly2D(c);
+    }
+
+    std::vector<Vec2> clipPolyToConvex2D(const std::vector<Vec2>& poly, const std::vector<Vec2>& conv)
+    {
+        std::vector<Vec2> c = poly;
+        for (size_t i = 0; i < conv.size() && c.size() >= 3; ++i)
+            c = clipPolyByEdge(c, conv[i], conv[(i + 1) % conv.size()]);
+        return (c.size() >= 3) ? cleanPoly2D(c) : std::vector<Vec2>{};
     }
 
     double polyArea2D(const std::vector<Vec2>& poly)
@@ -720,6 +730,7 @@ namespace
         double effW = 0.0;
         std::vector<Rect2D> outerStrips;
         std::vector<Rect2D> ringStrips;
+        std::vector<std::vector<Vec2>> miterStrips;
 
         const Matrix3* dirPreTM = nullptr;
         const Matrix3* dirPostTM = nullptr;
@@ -827,6 +838,40 @@ namespace
         }
     }
 
+    void clipPolyAgainstBorderRingAndEmit(
+        const std::vector<Vec2>& polyRoom, const BorderContext& bctx,
+        const Vec2& boardCenter, double totalRotDeg, double uvSpanL, double uvSpanW,
+        bool bFlipU, bool bFlipV, double bOffU, double bOffV,
+        const BoardConfig& cfg, double extrudeH, double bevelH, double outlineW,
+        double bTiltDir, double bTiltAmt, const Matrix3* dirPostTM, MtlID bMatID, MeshBuffers& out)
+    {
+        if (cfg.borderCutMode == 1)
+        {
+            for (const auto& trap : bctx.miterStrips)
+            {
+                auto sub = clipPolyToConvex2D(polyRoom, trap);
+                if (sub.size() >= 3)
+                {
+                    auto roomClipped = clipPolyToFootprint2D(sub, bctx.roomMinX, bctx.roomMinY, bctx.roomMaxX, bctx.roomMaxY,
+                                                             bctx.isRectRoom, bctx.roomTris);
+                    for (const auto& fpRoom : roomClipped)
+                    {
+                        auto fpTile = bctx.dirPreTM ? transformPoly2D(fpRoom, bctx.dirPreTM) : fpRoom;
+                        emitBoardPrism(fpTile, boardCenter, totalRotDeg, uvSpanL, uvSpanW, bFlipU, bFlipV, bOffU, bOffV,
+                                       cfg.doExtrude, extrudeH, cfg.doBevel, bevelH, outlineW,
+                                       bTiltDir, bTiltAmt, dirPostTM, bMatID, out);
+                    }
+                }
+            }
+        }
+        else
+        {
+            clipPolyAgainstRectListAndEmit(polyRoom, bctx.ringStrips, bctx,
+                                           boardCenter, totalRotDeg, uvSpanL, uvSpanW, bFlipU, bFlipV, bOffU, bOffV,
+                                           cfg, extrudeH, bevelH, outlineW, bTiltDir, bTiltAmt, dirPostTM, bMatID, out);
+        }
+    }
+
     void processBoardPoly(FastRNG& rng, const std::vector<Vec2>& rawPoly, double baseRotDeg,
                           double curBoardL, double curBoardW,
                           double bbMinX, double bbMinY, double bbMaxX, double bbMaxY,
@@ -839,7 +884,7 @@ namespace
                           double minTilt, double maxTilt,
                           double extrudeH, double bevelH, double outlineW,
                           const Matrix3* dirPostTM,
-                          int& boardIdx, MeshBuffers& out, MtlID fixedMatID = 0)
+                          int& boardIdx, MeshBuffers& out, MtlID fixedMatID = 0, bool ringOnly = false)
     {
         boardIdx += 1;
         double dxOff = rng.spreadRand(clampOffXMin, clampOffXMax, 1.0 - cfg.offXS) * rng.randSign();
@@ -881,6 +926,15 @@ namespace
         if (bctx.active && bctx.hasValidFrame)
         {
             auto polyRoom = bctx.dirPostTM ? transformPoly2D(polyRot, bctx.dirPostTM) : polyRot;
+            MtlID bMatID = static_cast<MtlID>((std::max)(1, cfg.borderMatID));
+
+            if (ringOnly)
+            {
+                clipPolyAgainstBorderRingAndEmit(polyRoom, bctx,
+                                                 center, totalRotDeg, uvSpanL, uvSpanW, bFlipU, bFlipV, bOffU, bOffV,
+                                                 cfg, extrudeH, bevelH, outlineW, bTiltDir, bTiltAmt, dirPostTM, bMatID, out);
+                return;
+            }
 
             // 1. Interior tiles inside border hole
             if (bctx.hasInnerField)
@@ -905,13 +959,12 @@ namespace
                                            center, totalRotDeg, uvSpanL, uvSpanW, bFlipU, bFlipV, bOffU, bOffV,
                                            cfg, extrudeH, bevelH, outlineW, bTiltDir, bTiltAmt, dirPostTM, matID, out);
 
-            // 3. Tile Seams border mode: clip main pattern tiles against Border Ring with BorderMatID
-            if (cfg.borderCutMode == 2)
+            // 3. Same Pattern border mode: clip main pattern tiles against Border Ring (Miter 45 or Tile Seams)
+            if (cfg.borderPattern == 1)
             {
-                MtlID bMatID = static_cast<MtlID>((std::max)(1, cfg.borderMatID));
-                clipPolyAgainstRectListAndEmit(polyRoom, bctx.ringStrips, bctx,
-                                               center, totalRotDeg, uvSpanL, uvSpanW, bFlipU, bFlipV, bOffU, bOffV,
-                                               cfg, extrudeH, bevelH, outlineW, bTiltDir, bTiltAmt, dirPostTM, bMatID, out);
+                clipPolyAgainstBorderRingAndEmit(polyRoom, bctx,
+                                                 center, totalRotDeg, uvSpanL, uvSpanW, bFlipU, bFlipV, bOffU, bOffV,
+                                                 cfg, extrudeH, bevelH, outlineW, bTiltDir, bTiltAmt, dirPostTM, bMatID, out);
             }
             return;
         }
@@ -1145,6 +1198,18 @@ namespace
                 pushValidRect(bctx.ringStrips, bctx.xOutMin, bctx.yInMax, bctx.xOutMax, bctx.yOutMax);
                 pushValidRect(bctx.ringStrips, bctx.xOutMin, bctx.yInMin, bctx.xInMin, bctx.yInMax);
                 pushValidRect(bctx.ringStrips, bctx.xInMax, bctx.yInMin, bctx.xOutMax, bctx.yInMax);
+
+                // 4 CCW mitered trapezoids for Miter 45 mode
+                double inW = bctx.xInMax - bctx.xInMin;
+                double inH = bctx.yInMax - bctx.yInMin;
+                double maxD45 = 0.45 * (std::min)(inW, inH);
+                double d45 = (std::min)(maxD45, 0.7071067811865475 * gapL);
+                bctx.miterStrips = {
+                    { { bctx.xOutMin + d45, bctx.yOutMin }, { bctx.xOutMax - d45, bctx.yOutMin }, { bctx.xInMax - d45, bctx.yInMin }, { bctx.xInMin + d45, bctx.yInMin } },
+                    { { bctx.xInMin + d45, bctx.yInMax }, { bctx.xInMax - d45, bctx.yInMax }, { bctx.xOutMax - d45, bctx.yOutMax }, { bctx.xOutMin + d45, bctx.yOutMax } },
+                    { { bctx.xOutMin, bctx.yOutMin + d45 }, { bctx.xInMin, bctx.yInMin + d45 }, { bctx.xInMin, bctx.yInMax - d45 }, { bctx.xOutMin, bctx.yOutMax - d45 } },
+                    { { bctx.xInMax, bctx.yInMin + d45 }, { bctx.xOutMax, bctx.yOutMin + d45 }, { bctx.xOutMax, bctx.yOutMax - d45 }, { bctx.xInMax, bctx.yInMax - d45 } }
+                };
             }
         }
 
@@ -1482,42 +1547,34 @@ namespace
             }
         }
 
-        // Border Miter 45 mode: emit 4 perimeter trapezoids in room plane space
-        if (bctx.active && bctx.hasValidFrame && cfg.borderCutMode == 1)
+        // Border Standard Tile ring pass (tiles of BorderTileSize inside the border frame only)
+        if (bctx.active && bctx.hasValidFrame && cfg.borderPattern == 2)
         {
-            double inW = bctx.xInMax - bctx.xInMin;
-            double inH = bctx.yInMax - bctx.yInMin;
-            double maxD45 = 0.45 * (std::min)(inW, inH);
-            double d45 = (std::min)(maxD45, 0.7071067811865475 * gapL);
+            double bTile = (std::max)(0.1, cfg.borderTileSize) * sc;
+            double stepX = bTile + gapL;
+            double stepY = bTile + gapW;
+            double yCursor = -stepY - modPos(offObjY, stepY);
+            double yLimit = bbSpanY + stepY;
+            double xStart = -stepX - modPos(offObjX, stepX);
+            double xLimit = bbSpanX + stepX;
             MtlID bMatID = static_cast<MtlID>((std::max)(1, cfg.borderMatID));
 
-            struct BorderStripSpec { std::vector<Vec2> poly; double rotDeg; };
-            BorderStripSpec strips[4] = {
-                { { { bctx.xOutMin + d45, bctx.yOutMin }, { bctx.xOutMax - d45, bctx.yOutMin }, { bctx.xInMax - d45, bctx.yInMin }, { bctx.xInMin + d45, bctx.yInMin } }, 0.0 },
-                { { { bctx.xInMin + d45, bctx.yInMax }, { bctx.xInMax - d45, bctx.yInMax }, { bctx.xOutMax - d45, bctx.yOutMax }, { bctx.xOutMin + d45, bctx.yOutMax } }, 0.0 },
-                { { { bctx.xOutMin, bctx.yOutMin + d45 }, { bctx.xInMin, bctx.yInMin + d45 }, { bctx.xInMin, bctx.yInMax - d45 }, { bctx.xOutMin, bctx.yOutMax - d45 } }, 90.0 },
-                { { { bctx.xInMax, bctx.yInMin + d45 }, { bctx.xOutMax, bctx.yOutMin + d45 }, { bctx.xOutMax, bctx.yOutMax - d45 }, { bctx.xInMax, bctx.yInMax - d45 } }, 90.0 }
-            };
-
-            for (const auto& st : strips)
+            while (yCursor < yLimit)
             {
-                auto clippedStrips = clipPolyToFootprint2D(st.poly, bctx.roomMinX, bctx.roomMinY, bctx.roomMaxX, bctx.roomMaxY,
-                                                           bctx.isRectRoom, bctx.roomTris);
-                for (const auto& fp : clippedStrips)
+                double xCursor = xStart;
+                double y0 = bbMinY + yCursor;
+                while (xCursor < xLimit)
                 {
-                    Vec2 c{ 0.0, 0.0 };
-                    for (const Vec2& p : fp) { c.x += p.x; c.y += p.y; }
-                    c.x /= static_cast<double>(fp.size());
-                    c.y /= static_cast<double>(fp.size());
-
-                    bool sFlipU = cfg.flipU ? (rng.bit() == 1) : false;
-                    bool sFlipV = cfg.flipV ? (rng.bit() == 1) : false;
-                    double sOffU = cfg.randOffU ? rng.range(-0.5, 0.5) : 0.0;
-                    double sOffV = cfg.randOffV ? rng.range(-0.5, 0.5) : 0.0;
-                    emitBoardPrism(fp, c, st.rotDeg, uvSpanL, uvSpanW, sFlipU, sFlipV, sOffU, sOffV,
-                                   cfg.doExtrude, extrudeH, cfg.doBevel, bevelH, outlineW,
-                                   0.0, 0.0, nullptr, bMatID, out);
+                    double x0 = bbMinX + xCursor;
+                    std::vector<Vec2> quad = { { x0, y0 }, { x0 + bTile, y0 }, { x0 + bTile, y0 + bTile }, { x0, y0 + bTile } };
+                    processBoardPoly(rng, quad, 0.0, bTile, bTile, bbMinX, bbMinY, bbMaxX, bbMaxY,
+                                     isRectangularFootprint, baseTris, cfg, bctx, bTile, bTile,
+                                     availGapW, availGapL, clampOffXMin, clampOffXMax, clampOffYMin, clampOffYMax,
+                                     minTilt, maxTilt, extrudeH, bevelH, outlineW, postPtr, boardIdx, out,
+                                     bMatID, true);
+                    xCursor += stepX;
                 }
+                yCursor += stepY;
             }
         }
 
@@ -1689,6 +1746,15 @@ public:
             }
             else if (map->GetMapID() == MAP_BORDER)
             {
+                HWND hPat = GetDlgItem(hWnd, IDC_BORDER_PAT_COMBO);
+                if (hPat)
+                {
+                    SendMessage(hPat, CB_RESETCONTENT, 0, 0);
+                    SendMessage(hPat, CB_ADDSTRING, 0, (LPARAM)_T("Same Pattern"));
+                    SendMessage(hPat, CB_ADDSTRING, 0, (LPARAM)_T("Standard Tile"));
+                    int bpat = map->GetParamBlock()->GetInt(pb_border_pattern, t);
+                    SendMessage(hPat, CB_SETCURSEL, (WPARAM)std::clamp(bpat - 1, 0, 1), 0);
+                }
                 HWND hCut = GetDlgItem(hWnd, IDC_BORDER_CUT_COMBO);
                 if (hCut)
                 {
@@ -1718,6 +1784,14 @@ public:
                 HWND hCombo = GetDlgItem(hWnd, IDC_PAT_COMBO);
                 int sel = (int)SendMessage(hCombo, CB_GETCURSEL, 0, 0);
                 pb->SetValue(pb_floor_pattern, t, sel + 1);
+                if (mod) mod->UpdateUIControls();
+                return TRUE;
+            }
+            if (id == IDC_BORDER_PAT_COMBO && code == CBN_SELCHANGE)
+            {
+                HWND hPat = GetDlgItem(hWnd, IDC_BORDER_PAT_COMBO);
+                int sel = (int)SendMessage(hPat, CB_GETCURSEL, 0, 0);
+                pb->SetValue(pb_border_pattern, t, sel + 1);
                 if (mod) mod->UpdateUIControls();
                 return TRUE;
             }
@@ -2011,6 +2085,11 @@ static ParamBlockDesc2 floorGenParamBlk(
     pb_border_off_right, _T("BorderOffRight"), TYPE_WORLD, P_ANIMATABLE, IDS_ROL_BORDER,
         p_default, 0.0f, p_range, -1000000.0f, 1000000.0f,
         p_ui, MAP_BORDER, TYPE_SPINNER, EDITTYPE_UNIVERSE, IDC_BORDER_OFF_RIGHT_EDIT, IDC_BORDER_OFF_RIGHT_SPIN, SPIN_AUTOSCALE, p_end,
+    pb_border_pattern, _T("BorderPattern"), TYPE_INT, 0, IDS_ROL_BORDER,
+        p_default, 1, p_range, 1, 2, p_end,
+    pb_border_tilesize, _T("BorderTileSize"), TYPE_WORLD, P_ANIMATABLE, IDS_ROL_BORDER,
+        p_default, 600.0f, p_range, 0.1f, 1000000.0f,
+        p_ui, MAP_BORDER, TYPE_SPINNER, EDITTYPE_UNIVERSE, IDC_BORDER_TILESIZE_EDIT, IDC_BORDER_TILESIZE_SPIN, SPIN_AUTOSCALE, p_end,
 
     p_end
 );
@@ -2492,14 +2571,21 @@ void FloorGeneratorMod::UpdateUIControls()
     if (IParamMap2* mBrd = pblock->GetMap(MAP_BORDER))
     {
         bool doBrd = pblock->GetInt(pb_do_border, t) != 0;
+        int bpat = pblock->GetInt(pb_border_pattern, t);
         HWND hw = mBrd->GetHWnd();
         mBrd->Enable(pb_border_width, doBrd);
         mBrd->Enable(pb_border_offset, doBrd);
+        mBrd->Enable(pb_border_tilesize, doBrd && (bpat == 2));
         mBrd->Enable(pb_border_matid, doBrd);
         mBrd->Enable(pb_border_off_bot, doBrd);
         mBrd->Enable(pb_border_off_top, doBrd);
         mBrd->Enable(pb_border_off_left, doBrd);
         mBrd->Enable(pb_border_off_right, doBrd);
+        if (HWND hPat = GetDlgItem(hw, IDC_BORDER_PAT_COMBO))
+        {
+            EnableWindow(hPat, doBrd);
+            SendMessage(hPat, CB_SETCURSEL, (WPARAM)std::clamp(bpat - 1, 0, 1), 0);
+        }
         if (HWND hCut = GetDlgItem(hw, IDC_BORDER_CUT_COMBO))
         {
             EnableWindow(hCut, doBrd);
@@ -2596,6 +2682,8 @@ void FloorGeneratorMod::ModifyObject(TimeValue t, ModContext& /*mc*/, ObjectStat
     cfg.doBorder = pblock->GetInt(pb_do_border, t) != 0;
     cfg.borderWidth = pblock->GetFloat(pb_border_width, t);
     cfg.borderOffset = pblock->GetFloat(pb_border_offset, t);
+    cfg.borderPattern = pblock->GetInt(pb_border_pattern, t);
+    cfg.borderTileSize = pblock->GetFloat(pb_border_tilesize, t);
     cfg.borderCutMode = pblock->GetInt(pb_border_cut_mode, t);
     cfg.borderMatID = pblock->GetInt(pb_border_matid, t);
     cfg.borderOffBot = pblock->GetFloat(pb_border_off_bot, t);
@@ -2703,6 +2791,8 @@ void FloorGeneratorMod::SavePresetINI(const MCHAR* path, TimeValue t)
     writeStr(_T("DoBorder"), pblock->GetInt(pb_do_border, t) ? _T("1") : _T("0"));
     writeStr(_T("BorderWidth"), std::to_wstring(pblock->GetFloat(pb_border_width, t)));
     writeStr(_T("BorderOffset"), std::to_wstring(pblock->GetFloat(pb_border_offset, t)));
+    writeStr(_T("BorderPattern"), std::to_wstring(pblock->GetInt(pb_border_pattern, t)));
+    writeStr(_T("BorderTileSize"), std::to_wstring(pblock->GetFloat(pb_border_tilesize, t)));
     writeStr(_T("BorderCutMode"), std::to_wstring(pblock->GetInt(pb_border_cut_mode, t)));
     writeStr(_T("BorderMatID"), std::to_wstring(pblock->GetInt(pb_border_matid, t)));
     writeStr(_T("BorderOffBot"), std::to_wstring(pblock->GetFloat(pb_border_off_bot, t)));
@@ -2762,6 +2852,8 @@ void FloorGeneratorMod::LoadPresetINI(const MCHAR* path, TimeValue t)
     pblock->SetValue(pb_do_border, t, readInt(_T("DoBorder"), 0) != 0);
     pblock->SetValue(pb_border_width, t, readFloat(_T("BorderWidth"), 100.0f));
     pblock->SetValue(pb_border_offset, t, readFloat(_T("BorderOffset"), 200.0f));
+    pblock->SetValue(pb_border_pattern, t, std::clamp(readInt(_T("BorderPattern"), 1), 1, 2));
+    pblock->SetValue(pb_border_tilesize, t, readFloat(_T("BorderTileSize"), 600.0f));
     pblock->SetValue(pb_border_cut_mode, t, std::clamp(readInt(_T("BorderCutMode"), 1), 1, 2));
     pblock->SetValue(pb_border_matid, t, readInt(_T("BorderMatID"), 4));
     pblock->SetValue(pb_border_off_bot, t, readFloat(_T("BorderOffBot"), 0.0f));

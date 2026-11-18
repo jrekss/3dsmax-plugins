@@ -114,7 +114,9 @@ enum ParamIDs
     pb_border_off_bot,
     pb_border_off_top,
     pb_border_off_left,
-    pb_border_off_right
+    pb_border_off_right,
+    pb_border_pattern,
+    pb_border_tilesize
 };
 
 class FloorGeneratorMod : public Modifier

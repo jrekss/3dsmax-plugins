@@ -103,7 +103,7 @@ BEGIN
     CONTROL         "", IDC_GROUT_MATID_SPIN, "SpinnerControl", 0x0000, 87, 182, 7, 10
 END
 
-IDD_PANEL_BORDER DIALOGEX 0, 0, 108, 152
+IDD_PANEL_BORDER DIALOGEX 0, 0, 108, 178
 STYLE DS_SETFONT | WS_CHILD | WS_VISIBLE
 FONT 8, "MS Shell Dlg"
 BEGIN
@@ -117,32 +117,39 @@ BEGIN
     CONTROL         "", IDC_BORDER_OFFSET_EDIT, "CustEdit", WS_TABSTOP, 53, 28, 34, 10
     CONTROL         "", IDC_BORDER_OFFSET_SPIN, "SpinnerControl", 0x0000, 87, 28, 7, 10
 
-    RTEXT           "Corners", IDC_STATIC, 4, 42, 34, 8
-    COMBOBOX        IDC_BORDER_CUT_COMBO, 41, 40, 61, 60, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    RTEXT           "Pattern", IDC_STATIC, 4, 42, 34, 8
+    COMBOBOX        IDC_BORDER_PAT_COMBO, 41, 40, 61, 60, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
 
-    RTEXT           "Border ID", IDC_STATIC, 4, 56, 46, 8
-    CONTROL         "", IDC_BORDER_MATID_EDIT, "CustEdit", WS_TABSTOP, 53, 55, 34, 10
-    CONTROL         "", IDC_BORDER_MATID_SPIN, "SpinnerControl", 0x0000, 87, 55, 7, 10
+    RTEXT           "Tile Size", IDC_STATIC, 4, 56, 46, 8
+    CONTROL         "", IDC_BORDER_TILESIZE_EDIT, "CustEdit", WS_TABSTOP, 53, 55, 34, 10
+    CONTROL         "", IDC_BORDER_TILESIZE_SPIN, "SpinnerControl", 0x0000, 87, 55, 7, 10
 
-    CONTROL         "Edit Border Lines", IDC_BORDER_EDIT_LINES, "CustButton", WS_TABSTOP, 6, 70, 96, 13
+    RTEXT           "Corners", IDC_STATIC, 4, 69, 34, 8
+    COMBOBOX        IDC_BORDER_CUT_COMBO, 41, 67, 61, 60, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
 
-    RTEXT           "Bottom Off", IDC_STATIC, 4, 88, 46, 8
-    CONTROL         "", IDC_BORDER_OFF_BOT_EDIT, "CustEdit", WS_TABSTOP, 53, 87, 34, 10
-    CONTROL         "", IDC_BORDER_OFF_BOT_SPIN, "SpinnerControl", 0x0000, 87, 87, 7, 10
+    RTEXT           "Border ID", IDC_STATIC, 4, 83, 46, 8
+    CONTROL         "", IDC_BORDER_MATID_EDIT, "CustEdit", WS_TABSTOP, 53, 82, 34, 10
+    CONTROL         "", IDC_BORDER_MATID_SPIN, "SpinnerControl", 0x0000, 87, 82, 7, 10
 
-    RTEXT           "Top Off", IDC_STATIC, 4, 99, 46, 8
-    CONTROL         "", IDC_BORDER_OFF_TOP_EDIT, "CustEdit", WS_TABSTOP, 53, 98, 34, 10
-    CONTROL         "", IDC_BORDER_OFF_TOP_SPIN, "SpinnerControl", 0x0000, 87, 98, 7, 10
+    CONTROL         "Edit Border Lines", IDC_BORDER_EDIT_LINES, "CustButton", WS_TABSTOP, 6, 96, 96, 13
 
-    RTEXT           "Left Off", IDC_STATIC, 4, 110, 46, 8
-    CONTROL         "", IDC_BORDER_OFF_LEFT_EDIT, "CustEdit", WS_TABSTOP, 53, 109, 34, 10
-    CONTROL         "", IDC_BORDER_OFF_LEFT_SPIN, "SpinnerControl", 0x0000, 87, 109, 7, 10
+    RTEXT           "Bottom Off", IDC_STATIC, 4, 114, 46, 8
+    CONTROL         "", IDC_BORDER_OFF_BOT_EDIT, "CustEdit", WS_TABSTOP, 53, 113, 34, 10
+    CONTROL         "", IDC_BORDER_OFF_BOT_SPIN, "SpinnerControl", 0x0000, 87, 113, 7, 10
 
-    RTEXT           "Right Off", IDC_STATIC, 4, 121, 46, 8
-    CONTROL         "", IDC_BORDER_OFF_RIGHT_EDIT, "CustEdit", WS_TABSTOP, 53, 120, 34, 10
-    CONTROL         "", IDC_BORDER_OFF_RIGHT_SPIN, "SpinnerControl", 0x0000, 87, 120, 7, 10
+    RTEXT           "Top Off", IDC_STATIC, 4, 125, 46, 8
+    CONTROL         "", IDC_BORDER_OFF_TOP_EDIT, "CustEdit", WS_TABSTOP, 53, 124, 34, 10
+    CONTROL         "", IDC_BORDER_OFF_TOP_SPIN, "SpinnerControl", 0x0000, 87, 124, 7, 10
 
-    PUSHBUTTON      "Reset Lines", IDC_BORDER_RESET, 14, 134, 80, 13
+    RTEXT           "Left Off", IDC_STATIC, 4, 136, 46, 8
+    CONTROL         "", IDC_BORDER_OFF_LEFT_EDIT, "CustEdit", WS_TABSTOP, 53, 135, 34, 10
+    CONTROL         "", IDC_BORDER_OFF_LEFT_SPIN, "SpinnerControl", 0x0000, 87, 135, 7, 10
+
+    RTEXT           "Right Off", IDC_STATIC, 4, 147, 46, 8
+    CONTROL         "", IDC_BORDER_OFF_RIGHT_EDIT, "CustEdit", WS_TABSTOP, 53, 146, 34, 10
+    CONTROL         "", IDC_BORDER_OFF_RIGHT_SPIN, "SpinnerControl", 0x0000, 87, 146, 7, 10
+
+    PUSHBUTTON      "Reset Lines", IDC_BORDER_RESET, 14, 160, 80, 13
 END
 
 IDD_PANEL_VARIATION DIALOGEX 0, 0, 108, 178
