@@ -19,7 +19,7 @@
 extern HINSTANCE hInstance;
 TCHAR* GetString(int id);
 
-#define FLOORGEN_CLASS_ID Class_ID(0x46477632, 0x20270003)
+#define FLOORGEN_CLASS_ID Class_ID(0x46477632, 0x20270021)
 
 enum RolloutMapIDs
 {
